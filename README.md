@@ -169,4 +169,3 @@ L'API est prête pour la production avec:
 
 ---
 
-**Développé pour FasoMarket - Marketplace burkinabè** 🇧🇫
