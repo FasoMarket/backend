@@ -59,7 +59,8 @@ class OrderService {
         $group: {
           _id: '$orderStatus',
           count: { $sum: 1 },
-          totalRevenue: { $sum: { $multiply: ['$items.price', '$items.quantity'] } }
+          totalGrossRevenue: { $sum: { $multiply: ['$items.price', '$items.quantity'] } },
+          totalNetRevenue: { $sum: '$items.netAmount' }
         }
       }
     ]);

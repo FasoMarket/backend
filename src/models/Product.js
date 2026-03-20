@@ -33,7 +33,30 @@ const productSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Store',
     required: true
-  }
+  },
+  vendor: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  brand: {
+    type: String,
+    trim: true
+  },
+  tags: [{
+    type: String
+  }],
+  promotion: {
+    isOnSale:     { type: Boolean, default: false },
+    salePrice:    { type: Number,  default: null },
+    saleEndDate:  { type: Date,    default: null },
+  },
+  viewCount:   { type: Number, default: 0 },
+  soldCount:   { type: Number, default: 0 },
+  rating: {
+    average: { type: Number, default: 0 },
+    count:   { type: Number, default: 0 },
+  },
 }, {
   timestamps: true
 });

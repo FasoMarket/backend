@@ -6,7 +6,7 @@ const { sendSuccess, sendError } = require('../utils/sendResponse');
 // Inscription
 exports.register = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, phone, shopName, address, businessCategory, description } = req.body;
 
     const userExists = await User.findOne({ email });
     if (userExists) {
@@ -20,7 +20,12 @@ exports.register = async (req, res) => {
       email,
       password,
       role: role || 'customer',
-      avatar
+      avatar,
+      phone,
+      shopName,
+      address,
+      businessCategory,
+      description
     });
 
     const token = generateToken(user._id);

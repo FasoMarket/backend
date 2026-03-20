@@ -1,5 +1,10 @@
 // Gestionnaire d'erreurs global
 exports.errorHandler = (err, req, res, next) => {
+  console.error('--- GLOBAL ERROR HANDLER ---');
+  console.error('Message:', err.message);
+  console.error('Stack:', err.stack);
+  console.error('---------------------------');
+
   let error = { ...err };
   error.message = err.message;
 

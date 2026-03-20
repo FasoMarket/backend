@@ -23,9 +23,16 @@ class ApiFeatures {
   filter() {
     const queryCopy = { ...this.queryString };
     
-    // Retirer les champs non filtrables
+    // Retirer les champs non filtrables et les valeurs vides
     const removeFields = ['search', 'sort', 'page', 'limit', 'fields'];
     removeFields.forEach(field => delete queryCopy[field]);
+
+    // Ignorer les valeurs vides (chaines vides, null, undefined)
+    Object.keys(queryCopy).forEach(key => {
+      if (queryCopy[key] === '' || queryCopy[key] === null || queryCopy[key] === undefined) {
+        delete queryCopy[key];
+      }
+    });
 
     // Filtres avancés (gte, gt, lte, lt)
     let queryStr = JSON.stringify(queryCopy);

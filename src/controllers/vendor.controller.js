@@ -4,6 +4,7 @@ const Store = require('../models/Store');
 const OrderService = require('../services/order.service');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendSuccess } = require('../utils/sendResponse');
+const { sendNotification } = require('../socket/socketManager');
 
 // Obtenir les commandes du vendeur
 exports.getVendorOrders = asyncHandler(async (req, res) => {
@@ -42,6 +43,7 @@ exports.getVendorStats = asyncHandler(async (req, res) => {
     lowStockProducts,
     orderStats,
     store: {
+      id: store._id,
       name: store.name,
       rating: store.rating
     }
@@ -68,6 +70,28 @@ exports.updateOrderStatus = asyncHandler(async (req, res) => {
 
   order.orderStatus = status;
   await order.save();
+
+  // NOTIFICATION
+  const io = req.app.get('io');
+  const statusMessages = {
+    confirmed:  { title: '✅ Commande confirmée',  msg: 'Votre commande a été confirmée par le vendeur',     link: `/my-orders/${order._id}` },
+    processing: { title: '⚙️ En préparation',       msg: 'Votre commande est en cours de préparation',        link: `/my-orders/${order._id}` },
+    shipped:    { title: '🚚 Commande expédiée !',  msg: 'Votre commande est en route vers vous',             link: `/my-orders/${order._id}` },
+    delivered:  { title: '🎉 Commande livrée !',    msg: 'Votre commande a bien été livrée. Bonne utilisation !', link: `/my-orders/${order._id}` },
+    cancelled:  { title: '❌ Commande annulée',     msg: 'Votre commande a malheureusement été annulée',      link: `/my-orders/${order._id}` },
+  };
+
+  const notifData = statusMessages[status];
+  if (notifData) {
+    await sendNotification(io, {
+      recipientId: order.user,
+      type: `order_${status}`,
+      title: notifData.title,
+      message: notifData.msg,
+      link: notifData.link,
+      data: { orderId: order._id },
+    });
+  }
 
   sendSuccess(res, 200, order, 'Statut mis à jour');
 });

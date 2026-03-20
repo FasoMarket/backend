@@ -31,7 +31,7 @@ const changePasswordValidation = [
 ];
 
 router.post('/register', registerLimiter, upload.single('avatar'), registerValidation, authController.register);
-router.post('/login', loginLimiter, loginValidation, authController.login);
+router.post('/login', loginValidation, authController.login);
 router.get('/profile', protect, authController.getProfile);
 router.put('/profile', protect, upload.single('avatar'), authController.updateProfile);
 router.put('/change-password', protect, changePasswordValidation, authController.changePassword);

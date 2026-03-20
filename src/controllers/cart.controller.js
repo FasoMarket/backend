@@ -4,15 +4,15 @@ const Product = require('../models/Product');
 // Obtenir le panier
 exports.getCart = async (req, res) => {
   try {
+    console.log('DEBUG: minimal getCart for user:', req.user?._id);
     let cart = await Cart.findOne({ user: req.user._id }).populate('items.product');
-    
     if (!cart) {
       cart = await Cart.create({ user: req.user._id, items: [] });
     }
-
     res.json(cart);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('CRITICAL Error in getCart:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 

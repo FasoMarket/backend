@@ -32,6 +32,42 @@ const userSchema = new mongoose.Schema({
   avatar: {
     type: String,
     default: null
+  },
+  phone: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  shopName: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  address: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  businessCategory: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  description: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  stats: {
+    totalOrders:  { type: Number, default: 0 },
+    totalSpent:   { type: Number, default: 0 },
+    totalReviews: { type: Number, default: 0 },
+  },
+  notificationPrefs: {
+    emailOnOrder:      { type: Boolean, default: true },
+    emailOnPromo:      { type: Boolean, default: true },
+    pushOnMessage:     { type: Boolean, default: true },
+    pushOnOrderUpdate: { type: Boolean, default: true },
   }
 }, {
   timestamps: true

@@ -9,12 +9,20 @@ exports.createStore = async (req, res) => {
       return res.status(400).json({ message: 'Vous avez déjà une boutique' });
     }
 
-    const logo = req.file ? `/uploads/${req.file.filename}` : null;
+    const logo = req.files?.logo?.[0] ? `/uploads/${req.files.logo[0].filename}` : null;
+    const banner = req.files?.banner?.[0] ? `/uploads/${req.files.banner[0].filename}` : null;
+
+    let socialLinks = req.body.socialLinks;
+    if (typeof socialLinks === 'string') {
+      try { socialLinks = JSON.parse(socialLinks); } catch (e) { socialLinks = {}; }
+    }
 
     // Si un slug personnalisé est fourni, l'utiliser
     let storeData = {
       ...req.body,
       logo,
+      banner,
+      socialLinks,
       owner: req.user._id
     };
 
@@ -80,8 +88,13 @@ exports.updateStore = async (req, res) => {
       return res.status(403).json({ message: 'Non autorisé' });
     }
 
-    if (req.file) {
-      req.body.logo = `/uploads/${req.file.filename}`;
+    if (req.files) {
+      if (req.files.logo?.[0]) {
+        req.body.logo = `/uploads/${req.files.logo[0].filename}`;
+      }
+      if (req.files.banner?.[0]) {
+        req.body.banner = `/uploads/${req.files.banner[0].filename}`;
+      }
     }
 
     const updatedStore = await Store.findByIdAndUpdate(
@@ -151,6 +164,19 @@ exports.checkSlugAvailability = async (req, res) => {
       available: !existingStore,
       slug: slug
     });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Obtenir la boutique du vendeur connecté
+exports.getMyStore = async (req, res) => {
+  try {
+    const store = await Store.findOne({ owner: req.user._id });
+    if (!store) {
+      return res.status(404).json({ message: 'Boutique non trouvée' });
+    }
+    res.json(store);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

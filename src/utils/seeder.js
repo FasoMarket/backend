@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const Store = require('../models/Store');
 const Product = require('../models/Product');
+const Cart = require('../models/Cart');
 
 const connectDB = async () => {
   try {
@@ -22,6 +23,7 @@ const seedData = async () => {
     await User.deleteMany();
     await Store.deleteMany();
     await Product.deleteMany();
+    await Cart.deleteMany();
 
     // Créer un admin
     const admin = await User.create({
@@ -59,27 +61,39 @@ const seedData = async () => {
     const products = [
       {
         name: 'Mangue Kent',
-        description: 'Mangue fraîche et juteuse',
+        description: 'Mangue fraîche et juteuse de Bobo-Dioulasso. Qualité export.',
         price: 2000,
-        category: 'fruits',
+        category: 'Fruits',
         stock: 50,
-        store: store._id
+        store: store._id,
+        vendor: vendor._id
       },
       {
-        name: 'Mil local',
-        description: 'Mil cultivé localement',
+        name: 'Mil local (Petit Mil)',
+        description: 'Mil rouge cultivé localement, riche en fer.',
         price: 1500,
-        category: 'cereales',
+        category: 'Cereals',
         stock: 100,
-        store: store._id
+        store: store._id,
+        vendor: vendor._id
       },
       {
-        name: 'Karité naturel',
-        description: 'Beurre de karité 100% naturel',
+        name: 'Beurre de Karité Bio',
+        description: 'Beurre de karité 100% naturel, sans additifs.',
         price: 3500,
-        category: 'cosmetiques',
+        category: 'Processed',
         stock: 30,
-        store: store._id
+        store: store._id,
+        vendor: vendor._id
+      },
+      {
+        name: 'Miel de la Sissili',
+        description: 'Miel sauvage pur de forêt.',
+        price: 5000,
+        category: 'Honey',
+        stock: 20,
+        store: store._id,
+        vendor: vendor._id
       }
     ];
 

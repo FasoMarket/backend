@@ -1,23 +1,33 @@
 const mongoose = require('mongoose');
 
 const conversationSchema = new mongoose.Schema({
-  customer: {
+  participants: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
-  },
-  vendor: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
+    required: true,
+  }],
   product: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Product',
-    required: true
-  }
-}, {
-  timestamps: true
-});
+    default: null,
+  },
+  lastMessage: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Message',
+    default: null,
+  },
+  lastMessageAt: {
+    type: Date,
+    default: Date.now,
+  },
+  unreadCount: {
+    type: Map,
+    of: Number,
+    default: {},
+  },
+}, { timestamps: true });
+
+conversationSchema.index({ participants: 1 });
+conversationSchema.index({ lastMessageAt: -1 });
 
 module.exports = mongoose.model('Conversation', conversationSchema);

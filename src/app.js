@@ -8,11 +8,21 @@ const { errorHandler, notFound } = require('./middlewares/errorHandler.middlewar
 const app = express();
 
 // Sécurité
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: false,
+  crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: false,
+  contentSecurityPolicy: false,
+}));
 app.use(mongoSanitize());
 
 // CORS
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // Body parser
 app.use(express.json({ limit: '10mb' }));
