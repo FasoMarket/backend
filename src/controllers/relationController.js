@@ -6,8 +6,11 @@ const Order          = require('../models/Order');
 const User           = require('../models/User');
 const Product        = require('../models/Product');
 const { sendNotification } = require('../socket/socketManager');
-const { v4: uuidv4 } = require('uuid');
+const crypto         = require('crypto');
 const mongoose = require('mongoose');
+
+// Générer un UUID v4 compatible CommonJS
+const uuidv4 = () => crypto.randomUUID();
 
 // ════════════════════════════════════════════════════════
 // RELATION 1 — VENDEUR → CLIENT
