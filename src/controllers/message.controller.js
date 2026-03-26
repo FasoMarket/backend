@@ -4,24 +4,90 @@ const asyncHandler = require('../utils/asyncHandler');
 
 // 1. Créer ou récupérer une conversation existante entre deux participants
 exports.createOrGetConversation = asyncHandler(async (req, res) => {
-  const { recipientId, productId } = req.body;
+  let { recipientId, productId } = req.body;
   const senderId = req.user._id;
+
+  console.log('🔍 createOrGetConversation');
+  console.log('   senderId:', senderId);
+  console.log('   recipientId:', recipientId);
+  console.log('   productId:', productId);
+
+  // Si recipientId est un storeId, chercher le vendeur (owner) du store
+  const Store = require('../models/Store');
+  let store = await Store.findById(recipientId);
+  
+  if (store) {
+    console.log('✅ Store trouvé par ID:', store.name, 'owner:', store.owner);
+    recipientId = store.owner;
+  } else {
+    console.log('❌ Store non trouvé par ID:', recipientId);
+    // Essayer de chercher le store par le productId
+    if (productId) {
+      const Product = require('../models/Product');
+      const product = await Product.findById(productId);
+      if (product && product.store) {
+        store = await Store.findById(product.store);
+        if (store) {
+          console.log('✅ Store trouvé via produit:', store.name, 'owner:', store.owner);
+          recipientId = store.owner;
+        }
+      }
+    }
+    // Si toujours pas de recipientId, c'est peut-être un ID d'utilisateur direct
+    if (!recipientId) {
+      console.log('⚠️ recipientId reste undefined');
+      return res.status(400).json({ success: false, message: "Destinataire invalide" });
+    }
+  }
+
+  console.log('   recipientId final:', recipientId);
 
   if (senderId.toString() === recipientId.toString()) {
     return res.status(400).json({ success: false, message: "Vous ne pouvez pas démarrer une discussion avec vous-même" });
   }
 
   // On cherche une conversation entre ces deux personnes
-  // (Note: on peut affiner en cherchant aussi par productId si on veut des discussions par produit spécifique)
   let conversation = await Conversation.findOne({
     participants: { $all: [senderId, recipientId] }
   });
 
   if (!conversation) {
+    console.log('📝 Création nouvelle conversation entre', senderId, 'et', recipientId);
     conversation = await Conversation.create({
       participants: [senderId, recipientId],
-      metadata: { productId } // Optionnel
+      product: productId
     });
+  } else {
+    console.log('✅ Conversation existante trouvée:', conversation._id);
+  }
+
+  // Envoyer le message du produit (même si la conversation existe déjà)
+  if (productId) {
+    const Product = require('../models/Product');
+    const product = await Product.findById(productId).populate('store', 'slug');
+    if (product) {
+      console.log(`📦 Envoi du produit: ${product.name}`);
+      const productMessage = await Message.create({
+        conversation: conversation._id,
+        sender: senderId,
+        content: JSON.stringify({
+          productId: product._id,
+          productName: product.name,
+          productPrice: product.price,
+          productImage: product.images && product.images.length > 0 ? product.images[0] : null,
+          productDescription: product.description,
+          storeId: product.store?._id,
+          storeSlug: product.store?.slug,
+        }),
+        type: 'product_link',
+      });
+
+      await Conversation.findByIdAndUpdate(conversation._id, {
+        lastMessage: productMessage._id,
+        lastMessageAt: new Date(),
+      });
+      console.log(`✅ Message produit créé: ${productMessage._id}`);
+    }
   }
 
   res.status(200).json({ success: true, conversation });
@@ -29,6 +95,8 @@ exports.createOrGetConversation = asyncHandler(async (req, res) => {
 
 // 2. Obtenir la liste des conversations de l'utilisateur
 exports.getConversations = asyncHandler(async (req, res) => {
+  console.log('📨 getConversations - userId:', req.user._id);
+  
   const conversations = await Conversation.find({
     participants: req.user._id
   })
@@ -36,9 +104,12 @@ exports.getConversations = asyncHandler(async (req, res) => {
   .populate('lastMessage')
   .sort({ updatedAt: -1 });
 
+  console.log(`✅ Conversations trouvées: ${conversations.length}`);
+
   // On transforme un peu pour identifier l'autre participant plus facilement côté front
   const formatted = conversations.map(conv => {
     const otherParticipant = conv.participants.find(p => p._id.toString() !== req.user._id.toString());
+    console.log(`   Conversation ${conv._id}: otherParticipant = ${otherParticipant?.name}`);
     return {
       ...conv._doc,
       otherParticipant,

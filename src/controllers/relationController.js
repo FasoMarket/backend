@@ -64,6 +64,14 @@ exports.createOffer = async (req, res) => {
       promoCode: promoCode || null,
       product: productId || null,
     });
+
+    // Broadcast offer creation
+    const io = req.app.get('io');
+    if (io) {
+      const { broadcastOfferCreated } = require('../socket/socketManager');
+      broadcastOfferCreated(io, offer);
+    }
+
     res.status(201).json({ success: true, offer });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -109,6 +117,12 @@ exports.sendOffer = async (req, res) => {
     offer.sentCount = recipientIds.length;
     await offer.save();
 
+    // Broadcast offer sent
+    if (io) {
+      const { broadcastOfferSent } = require('../socket/socketManager');
+      broadcastOfferSent(io, offer);
+    }
+
     res.json({ success: true, message: `Offre envoyée à ${recipientIds.length} client(s)`, sentCount: recipientIds.length });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -127,7 +141,16 @@ exports.getMyOffers = async (req, res) => {
 
 exports.deleteOffer = async (req, res) => {
   try {
-    await VendorOffer.findOneAndDelete({ _id: req.params.id, vendor: req.user._id });
+    const offerId = req.params.id;
+    await VendorOffer.findOneAndDelete({ _id: offerId, vendor: req.user._id });
+
+    // Broadcast offer deletion
+    const io = req.app.get('io');
+    if (io) {
+      const { broadcastOfferDeleted } = require('../socket/socketManager');
+      broadcastOfferDeleted(io, offerId);
+    }
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

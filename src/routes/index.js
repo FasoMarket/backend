@@ -13,6 +13,8 @@ const paymentRoutes      = require('./payment.routes');
 const settingsRoutes     = require('./settings.routes');
 const messageRoutes      = require('./message.routes');
 const notificationRoutes = require('./notification.routes');
+const communicationRoutes = require('./communication.routes');
+const uploadRoutes       = require('./upload.routes');
 
 const { protect, authorize } = require('../middlewares/auth.middleware');
 const upload = require('../config/multer');
@@ -58,10 +60,10 @@ router.post  ('/refunds',                    protect, clientCtrl.requestRefund);
 router.get   ('/refunds/my-refunds',         protect, clientCtrl.getMyRefunds);
 
 // ── AVIS (Client) ─────────────────────────────────────────────────────────────
-router.post  ('/client-reviews',             protect, clientCtrl.createReview);
-router.get   ('/reviews/my-reviews',         protect, clientCtrl.getMyReviews);
-router.put   ('/reviews/:id',                protect, clientCtrl.updateReview);
-router.delete('/reviews/:id',                protect, clientCtrl.deleteReview);
+router.post  ('/reviews',                     protect, clientCtrl.createReview);
+router.get   ('/reviews/my-reviews',          protect, clientCtrl.getMyReviews);
+router.put   ('/reviews/:id',                 protect, clientCtrl.updateReview);
+router.delete('/reviews/:id',                 protect, clientCtrl.deleteReview);
 
 // ── SIGNALEMENT ───────────────────────────────────────────────────────────────
 router.post  ('/reports',                    protect, clientCtrl.reportProduct);
@@ -109,7 +111,6 @@ router.post  ('/vendor/reviews/:id/reply',           protect, isVendeur, vendorA
 router.get   ('/vendor/reviews/stats',               protect, isVendeur, vendorAdvancedCtrl.getReviewStats);
 router.get   ('/reviews/product/:productId',         vendorAdvancedCtrl.getProductReviews);
 router.get   ('/reviews/store/:vendorId',            vendorAdvancedCtrl.getStoreReviews);
-router.post  ('/reviews',                            protect, vendorAdvancedCtrl.createReview);
 
 // ── ANALYTIQUES VENDEUR ───────────────────────────────────────────────────────
 router.get   ('/vendor/analytics/overview',          protect, isVendeur, vendorAdvancedCtrl.getOverview);
@@ -164,5 +165,7 @@ router.use('/payments',      paymentRoutes);   // FIXED: was /payment
 router.use('/settings',      settingsRoutes);
 router.use('/messages',      messageRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/communications', communicationRoutes);
+router.use('/upload',        uploadRoutes);
 
 module.exports = router;

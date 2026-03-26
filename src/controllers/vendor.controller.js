@@ -6,6 +6,17 @@ const asyncHandler = require('../utils/asyncHandler');
 const { sendSuccess } = require('../utils/sendResponse');
 const { sendNotification } = require('../socket/socketManager');
 
+// Obtenir la boutique du vendeur
+exports.getMyStore = asyncHandler(async (req, res) => {
+  const store = await Store.findOne({ owner: req.user._id }).populate('owner', 'name email');
+
+  if (!store) {
+    return res.status(404).json({ message: 'Boutique non trouvée' });
+  }
+
+  sendSuccess(res, 200, store, 'Boutique récupérée');
+});
+
 // Obtenir les commandes du vendeur
 exports.getVendorOrders = asyncHandler(async (req, res) => {
   const store = await Store.findOne({ owner: req.user._id });
@@ -36,12 +47,27 @@ exports.getVendorStats = asyncHandler(async (req, res) => {
     stock: { $lt: 10 } 
   });
 
-  const orderStats = await OrderService.getVendorOrderStats(req.user._id);
+  const orderStatsArray = await OrderService.getVendorOrderStats(req.user._id);
+
+  // Transformer le tableau en objet avec les totaux
+  let totalRevenue = 0;
+  let totalOrders = 0;
+  
+  if (Array.isArray(orderStatsArray)) {
+    orderStatsArray.forEach(stat => {
+      totalRevenue += stat.totalGrossRevenue || 0;
+      totalOrders += stat.count || 0;
+    });
+  }
 
   const stats = {
     totalProducts,
     lowStockProducts,
-    orderStats,
+    orderStats: {
+      totalRevenue,
+      totalOrders,
+      byStatus: orderStatsArray
+    },
     store: {
       id: store._id,
       name: store.name,

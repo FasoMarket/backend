@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { body } = require('express-validator');
 const productController = require('../controllers/product.controller');
+const vendorAdvancedController = require('../controllers/vendorAdvancedController');
 const { protect, authorize, checkVendorApproval } = require('../middlewares/auth.middleware');
 const { checkProductOwnership } = require('../middlewares/ownership.middleware');
 const { validate } = require('../middlewares/validation.middleware');
@@ -16,9 +17,13 @@ const productValidation = [
   validate
 ];
 
+// Routes spécifiques AVANT les routes paramétrées
+router.get('/categories', productController.getCategories);
+router.get('/vendor/low-stock', protect, authorize('vendor'), checkVendorApproval, vendorAdvancedController.getLowStockProducts);
 router.post('/', protect, authorize('vendor'), checkVendorApproval, upload.array('images', 5), productValidation, productController.createProduct);
 router.get('/', productController.getAllProducts);
-router.get('/categories', productController.getCategories);
+
+// Routes paramétrées
 router.get('/:id', productController.getProductById);
 router.put('/:id', protect, authorize('vendor'), checkProductOwnership, upload.array('images', 5), productController.updateProduct);
 router.delete('/:id', protect, authorize('vendor'), checkProductOwnership, productController.deleteProduct);
@@ -26,3 +31,4 @@ router.post('/:id/images', protect, authorize('vendor'), checkProductOwnership, 
 router.delete('/:id/images', protect, authorize('vendor'), checkProductOwnership, productController.deleteProductImage);
 
 module.exports = router;
+

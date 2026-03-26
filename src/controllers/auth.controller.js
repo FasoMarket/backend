@@ -63,17 +63,21 @@ exports.login = async (req, res) => {
 
     const token = generateToken(user._id);
 
+    console.log('🔐 Login - User:', { id: user._id, name: user.name, role: user.role, isVendorApproved: user.isVendorApproved });
+
     res.json({
       user: {
         id: user._id,
         name: user.name,
         email: user.email,
         role: user.role,
-        isVendorApproved: user.isVendorApproved
+        isVendorApproved: user.isVendorApproved,
+        avatar: user.avatar
       },
       token
     });
   } catch (error) {
+    console.error('❌ Erreur login:', error);
     res.status(500).json({ message: error.message });
   }
 };

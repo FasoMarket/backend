@@ -452,3 +452,59 @@ exports.getFinancialReport = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
+// ── ANALYTICS COMBINED ────────────────────────────────────────────────────────
+exports.getAnalytics = async (req, res) => {
+  try {
+    const { period = 'month' } = req.query;
+    const days = period === 'week' ? 7 : period === 'year' ? 365 : 30;
+    const start = new Date();
+    start.setDate(start.getDate() - days);
+
+    // Get revenue by day
+    const revenueByDay = await Order.aggregate([
+      { $match: { paymentStatus: 'paid', createdAt: { $gte: start } } },
+      { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, revenue: { $sum: '$totalPrice' } } },
+      { $sort: { _id: 1 } },
+      { $project: { day: '$_id', revenue: 1, _id: 0 } },
+    ]);
+
+    // Get orders by status
+    const ordersByStatus = await Order.aggregate([
+      { $group: { _id: '$orderStatus', count: { $sum: 1 } } },
+      { $project: { status: '$_id', count: 1, _id: 0 } },
+    ]);
+
+    // Get top products
+    const topProducts = await Order.aggregate([
+      { $unwind: '$items' },
+      { $group: { _id: '$items.product', totalSold: { $sum: '$items.quantity' }, revenue: { $sum: { $multiply: ['$items.price', '$items.quantity'] } } } },
+      { $sort: { totalSold: -1 } },
+      { $limit: 5 },
+      { $lookup: { from: 'products', localField: '_id', foreignField: '_id', as: 'product' } },
+      { $unwind: { path: '$product', preserveNullAndEmptyArrays: true } },
+      { $lookup: { from: 'stores', localField: 'product.store', foreignField: '_id', as: 'store' } },
+      { $unwind: { path: '$store', preserveNullAndEmptyArrays: true } },
+      { $project: { name: { $ifNull: ['$product.name', 'Produit supprimé'] }, vendor: { $ifNull: ['$store.name', 'Vendeur supprimé'] }, sales: '$totalSold', revenue: 1 } },
+    ]);
+
+    // Get totals
+    const totalOrders = await Order.countDocuments();
+    const totalRevenue = await Order.aggregate([
+      { $match: { paymentStatus: 'paid' } },
+      { $group: { _id: null, total: { $sum: '$totalPrice' } } },
+    ]);
+
+    res.json({
+      totalRevenue: totalRevenue[0]?.total || 0,
+      totalOrders,
+      activeUsers: 0,
+      conversionRate: 0,
+      revenueByDay: revenueByDay.length > 0 ? revenueByDay : [],
+      ordersByStatus: ordersByStatus.length > 0 ? ordersByStatus : [],
+      topProducts: topProducts.length > 0 ? topProducts : [],
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};

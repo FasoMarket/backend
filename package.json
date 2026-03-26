@@ -6,7 +6,10 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "seed": "node src/utils/seeder.js"
+    "seed": "node src/utils/seeder.js",
+    "test:messaging": "node test_messaging.js",
+    "test:categories": "node test_categories.js",
+    "test:cors": "node test_cors_socket.js"
   },
   "keywords": [
     "marketplace",
@@ -16,9 +19,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "axios": "^1.13.6",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.3",
-    "cloudinary": "^1.41.0",
+    "cloudinary": "^2.9.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
@@ -32,6 +36,7 @@
     "nodemailer": "^8.0.3",
     "recharts": "^3.8.0",
     "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
     "uuid": "^13.0.0"
   },
   "devDependencies": {

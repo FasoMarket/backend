@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const { sendNotification } = require('../socket/socketManager');
+const { sendSuccess, sendError } = require('../utils/sendResponse');
 const Category = require('../models/Category');
 const Product  = require('../models/Product');
 
@@ -15,9 +16,9 @@ exports.getVendors = async (req, res) => {
       return { ...vendor, store };
     }));
 
-    res.json(vendorsWithStores);
+    sendSuccess(res, 200, vendorsWithStores, 'Vendeurs récupérés');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
 
@@ -27,7 +28,7 @@ exports.approveVendor = async (req, res) => {
     const vendor = await User.findById(req.params.id);
 
     if (!vendor || vendor.role !== 'vendor') {
-      return res.status(404).json({ message: 'Vendeur non trouvé' });
+      return sendError(res, 404, 'Vendeur non trouvé');
     }
 
     vendor.isVendorApproved = true;
@@ -44,9 +45,9 @@ exports.approveVendor = async (req, res) => {
       data: { vendorId: vendor._id },
     });
 
-    res.json({ message: 'Vendeur approuvé avec succès', vendor });
+    sendSuccess(res, 200, vendor, 'Vendeur approuvé avec succès');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
 
@@ -56,7 +57,7 @@ exports.rejectVendor = async (req, res) => {
     const vendor = await User.findById(req.params.id);
 
     if (!vendor || vendor.role !== 'vendor') {
-      return res.status(404).json({ message: 'Vendeur non trouvé' });
+      return sendError(res, 404, 'Vendeur non trouvé');
     }
 
     vendor.isVendorApproved = false;
@@ -73,19 +74,68 @@ exports.rejectVendor = async (req, res) => {
       data: {},
     });
 
-    res.json({ message: 'Vendeur refusé', vendor });
+    sendSuccess(res, 200, vendor, 'Vendeur refusé');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
 
-// Obtenir tous les utilisateurs
+// Obtenir tous les utilisateurs avec pagination et filtres
 exports.getUsers = async (req, res) => {
   try {
-    const users = await User.find();
-    res.json(users);
+    const { page = 1, limit = 20, role, search, sortBy = 'createdAt', sortOrder = -1 } = req.query;
+    
+    const skip = (page - 1) * limit;
+    
+    // Construire le filtre
+    const filter = {};
+    if (role) filter.role = role;
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { phone: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    // Récupérer les utilisateurs
+    const users = await User.find(filter)
+      .select('-password')
+      .sort({ [sortBy]: parseInt(sortOrder) })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean();
+
+    // Compter le total
+    const total = await User.countDocuments(filter);
+
+    // Enrichir avec les stats
+    const Order = require('../models/Order');
+    const usersWithStats = await Promise.all(users.map(async (user) => {
+      const orderCount = await Order.countDocuments({ customer: user._id });
+      const totalSpent = await Order.aggregate([
+        { $match: { customer: user._id, paymentStatus: 'paid' } },
+        { $group: { _id: null, total: { $sum: '$totalPrice' } } }
+      ]);
+
+      return {
+        ...user,
+        orderCount,
+        totalSpent: totalSpent[0]?.total || 0,
+      };
+    }));
+
+    sendSuccess(res, 200, {
+      users: usersWithStats,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / limit),
+      }
+    }, 'Utilisateurs récupérés');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
 
@@ -94,26 +144,67 @@ exports.deleteUser = async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) {
-      return res.status(404).json({ message: 'Utilisateur non trouvé' });
+      return sendError(res, 404, 'Utilisateur non trouvé');
     }
     await User.findByIdAndDelete(req.params.id);
-    res.json({ message: 'Utilisateur supprimé avec succès' });
+    sendSuccess(res, 200, null, 'Utilisateur supprimé avec succès');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
+  }
+};
+
+// Obtenir les détails d'un utilisateur
+exports.getUserDetail = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select('-password').lean();
+    
+    if (!user) {
+      return sendError(res, 404, 'Utilisateur non trouvé');
+    }
+
+    // Récupérer les stats
+    const Order = require('../models/Order');
+    const Review = require('../models/Review');
+    
+    const orders = await Order.find({ customer: user._id }).lean();
+    const reviews = await Review.find({ author: user._id }).lean();
+    
+    const totalSpent = orders
+      .filter(o => o.paymentStatus === 'paid')
+      .reduce((sum, o) => sum + o.totalPrice, 0);
+
+    const userDetail = {
+      ...user,
+      stats: {
+        totalOrders: orders.length,
+        totalSpent,
+        averageOrderValue: orders.length > 0 ? totalSpent / orders.length : 0,
+        totalReviews: reviews.length,
+        averageRating: reviews.length > 0 
+          ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length 
+          : 0,
+      },
+      recentOrders: orders.slice(-5).reverse(),
+    };
+
+    sendSuccess(res, 200, userDetail, 'Détails utilisateur récupérés');
+  } catch (error) {
+    sendError(res, 500, error.message);
   }
 };
 
 // Obtenir les stats admin
 exports.getStats = async (req, res) => {
   try {
-    const totalUsers = await User.countDocuments({ role: 'customer' });
+    const totalUsers = await User.countDocuments(); // Tous les utilisateurs
+    const totalClients = await User.countDocuments({ role: 'customer' });
     const vendors = await User.find({ role: 'vendor' }).lean();
     const totalVendors = vendors.length;
     
     const Store = require('../models/Store');
     const pendingVendorsList = [];
     
-    // Pour les stats, on a besoin du nombre de produits et ventes (simulé pour l'instant)
+    // Pour les stats, on a besoin du nombre de produits et ventes
     const totalProducts = await Product.countDocuments();
     
     for (const vendor of vendors) {
@@ -140,17 +231,18 @@ exports.getStats = async (req, res) => {
       totalCommissionEarnings += (order.commissionAmount || 0);
     });
 
-    res.json({
+    sendSuccess(res, 200, {
       totalUsers,
+      totalClients,
       totalVendors,
       totalProducts,
       pendingVendors: pendingVendorsList.length,
       pendingVendorsList,
       totalSales: totalSalesValue,
       totalCommission: totalCommissionEarnings
-    });
+    }, 'Statistiques récupérées');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
 
@@ -195,9 +287,9 @@ exports.getCategories = async (req, res) => {
       { $sort: { name: 1 } },
     ]);
 
-    res.json({ success: true, data: categories });
+    sendSuccess(res, 200, categories, 'Catégories récupérées');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
 
@@ -209,16 +301,26 @@ exports.createCategory = async (req, res) => {
 
     const existing = await Category.findOne({ slug });
     if (existing) {
-      return res.status(400).json({ message: 'Une catégorie avec ce slug existe déjà.' });
+      return sendError(res, 400, 'Une catégorie avec ce slug existe déjà.');
     }
 
     const category = await Category.create({ name, slug, description, icon, colorIdx });
-    res.status(201).json({ success: true, data: category });
+    
+    // Broadcast Socket.io event pour que tous les clients voient la nouvelle catégorie
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('category:created', {
+        category: category.toObject(),
+        timestamp: new Date(),
+      });
+    }
+    
+    sendSuccess(res, 201, category, 'Catégorie créée avec succès');
   } catch (error) {
     if (error.code === 11000) {
-      return res.status(400).json({ message: 'Ce nom/slug est déjà utilisé.' });
+      return sendError(res, 400, 'Ce nom/slug est déjà utilisé.');
     }
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
 
@@ -230,10 +332,20 @@ exports.updateCategory = async (req, res) => {
       req.body,
       { new: true, runValidators: true }
     );
-    if (!category) return res.status(404).json({ message: 'Catégorie non trouvée' });
-    res.json({ success: true, data: category });
+    if (!category) return sendError(res, 404, 'Catégorie non trouvée');
+    
+    // Broadcast Socket.io event
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('category:updated', {
+        category: category.toObject(),
+        timestamp: new Date(),
+      });
+    }
+    
+    sendSuccess(res, 200, category, 'Catégorie mise à jour');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
 
@@ -241,10 +353,10 @@ exports.updateCategory = async (req, res) => {
 exports.deleteCategory = async (req, res) => {
   try {
     const category = await Category.findByIdAndDelete(req.params.id);
-    if (!category) return res.status(404).json({ message: 'Catégorie non trouvée' });
-    res.json({ success: true, message: 'Catégorie supprimée avec succès' });
+    if (!category) return sendError(res, 404, 'Catégorie non trouvée');
+    sendSuccess(res, 200, null, 'Catégorie supprimée avec succès');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
 

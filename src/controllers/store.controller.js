@@ -1,12 +1,14 @@
 const Store = require('../models/Store');
 const mongoose = require('mongoose');
+const { sendSuccess, sendError, sendListResponse } = require('../utils/sendResponse');
+const { transformStore, transformProduct } = require('../utils/transformers');
 
 // Créer une boutique
 exports.createStore = async (req, res) => {
   try {
     const existingStore = await Store.findOne({ owner: req.user._id });
     if (existingStore) {
-      return res.status(400).json({ message: 'Vous avez déjà une boutique' });
+      return sendError(res, 400, 'Vous avez déjà une boutique');
     }
 
     const logo = req.files?.logo?.[0] ? `/uploads/${req.files.logo[0].filename}` : null;
@@ -17,7 +19,6 @@ exports.createStore = async (req, res) => {
       try { socialLinks = JSON.parse(socialLinks); } catch (e) { socialLinks = {}; }
     }
 
-    // Si un slug personnalisé est fourni, l'utiliser
     let storeData = {
       ...req.body,
       logo,
@@ -26,20 +27,20 @@ exports.createStore = async (req, res) => {
       owner: req.user._id
     };
 
-    // Si un slug personnalisé est fourni, vérifier qu'il est unique
     if (req.body.slug) {
       const existingSlug = await Store.findOne({ slug: req.body.slug });
       if (existingSlug) {
-        return res.status(400).json({ message: 'Ce nom de boutique est déjà pris' });
+        return sendError(res, 400, 'Ce nom de boutique est déjà pris');
       }
       storeData.slug = req.body.slug;
     }
 
     const store = await Store.create(storeData);
+    await store.populate('owner', 'name email');
 
-    res.status(201).json(store);
+    sendSuccess(res, 201, transformStore(store), 'Boutique créée avec succès');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
 
@@ -47,9 +48,10 @@ exports.createStore = async (req, res) => {
 exports.getAllStores = async (req, res) => {
   try {
     const stores = await Store.find().populate('owner', 'name email');
-    res.json(stores);
+    const transformedStores = stores.map(transformStore);
+    sendListResponse(res, 200, transformedStores, 'Boutiques récupérées');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
 
@@ -58,7 +60,6 @@ exports.getStoreByIdOrSlug = async (req, res) => {
   try {
     const { identifier } = req.params;
     
-    // Chercher par ID ou par slug
     const query = mongoose.Types.ObjectId.isValid(identifier) 
       ? { _id: identifier }
       : { slug: identifier };
@@ -66,12 +67,12 @@ exports.getStoreByIdOrSlug = async (req, res) => {
     const store = await Store.findOne(query).populate('owner', 'name email');
     
     if (!store) {
-      return res.status(404).json({ message: 'Boutique non trouvée' });
+      return sendError(res, 404, 'Boutique non trouvée');
     }
 
-    res.json(store);
+    sendSuccess(res, 200, transformStore(store), 'Boutique récupérée');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
 
@@ -81,11 +82,11 @@ exports.updateStore = async (req, res) => {
     const store = await Store.findById(req.params.id);
 
     if (!store) {
-      return res.status(404).json({ message: 'Boutique non trouvée' });
+      return sendError(res, 404, 'Boutique non trouvée');
     }
 
     if (store.owner.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Non autorisé' });
+      return sendError(res, 403, 'Non autorisé');
     }
 
     if (req.files) {
@@ -101,11 +102,11 @@ exports.updateStore = async (req, res) => {
       req.params.id,
       req.body,
       { new: true, runValidators: true }
-    );
+    ).populate('owner', 'name email');
 
-    res.json(updatedStore);
+    sendSuccess(res, 200, transformStore(updatedStore), 'Boutique mise à jour');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
 
@@ -115,20 +116,19 @@ exports.deleteStore = async (req, res) => {
     const store = await Store.findById(req.params.id);
 
     if (!store) {
-      return res.status(404).json({ message: 'Boutique non trouvée' });
+      return sendError(res, 404, 'Boutique non trouvée');
     }
 
     if (store.owner.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Non autorisé' });
+      return sendError(res, 403, 'Non autorisé');
     }
 
     await store.deleteOne();
-    res.json({ message: 'Boutique supprimée avec succès' });
+    sendSuccess(res, 200, null, 'Boutique supprimée avec succès');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
-
 
 // Obtenir les produits d'une boutique par ID ou slug
 exports.getStoreProducts = async (req, res) => {
@@ -136,7 +136,6 @@ exports.getStoreProducts = async (req, res) => {
     const { identifier } = req.params;
     const Product = require('../models/Product');
     
-    // Chercher la boutique par ID ou slug
     const query = mongoose.Types.ObjectId.isValid(identifier) 
       ? { _id: identifier }
       : { slug: identifier };
@@ -144,13 +143,18 @@ exports.getStoreProducts = async (req, res) => {
     const store = await Store.findOne(query);
     
     if (!store) {
-      return res.status(404).json({ message: 'Boutique non trouvée' });
+      return sendError(res, 404, 'Boutique non trouvée');
     }
     
-    const products = await Product.find({ store: store._id });
-    res.json(products);
+    const products = await Product.find({ store: store._id })
+      .populate('store', 'name logo slug')
+      .populate('vendor', '_id name email');
+    
+    const transformedProducts = products.map(transformProduct);
+    
+    sendListResponse(res, 200, transformedProducts, 'Produits de la boutique récupérés');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
 
@@ -160,24 +164,21 @@ exports.checkSlugAvailability = async (req, res) => {
     const { slug } = req.params;
     const existingStore = await Store.findOne({ slug });
     
-    res.json({
-      available: !existingStore,
-      slug: slug
-    });
+    sendSuccess(res, 200, { available: !existingStore, slug }, 'Vérification effectuée');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
 
 // Obtenir la boutique du vendeur connecté
 exports.getMyStore = async (req, res) => {
   try {
-    const store = await Store.findOne({ owner: req.user._id });
+    const store = await Store.findOne({ owner: req.user._id }).populate('owner', 'name email');
     if (!store) {
-      return res.status(404).json({ message: 'Boutique non trouvée' });
+      return sendError(res, 404, 'Boutique non trouvée');
     }
-    res.json(store);
+    sendSuccess(res, 200, transformStore(store), 'Boutique récupérée');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };

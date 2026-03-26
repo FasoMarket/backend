@@ -58,7 +58,7 @@ exports.updateStock = async (req, res) => {
 
     // Alerte stock faible
     const io = req.app.get('io');
-    if (product.stock <= 5 && product.stock > 0) {
+    if (product.stock < 10 && product.stock > 0) {
       await sendNotification(io, {
         recipientId: req.user._id,
         type:    'low_stock',
@@ -94,9 +94,10 @@ exports.setProductPromotion = async (req, res) => {
 
 exports.getLowStockProducts = async (req, res) => {
   try {
+    const threshold = 10; // Utiliser le même seuil que getVendorStats
     const products = await Product.find({
       vendor: req.user._id,
-      stock:  { $lte: 5 },
+      stock:  { $lt: threshold },
       status: { $ne: 'deleted' },
     }).sort('stock');
     res.json({ success: true, products });
@@ -124,6 +125,14 @@ exports.createCollection = async (req, res) => {
     const collection = await Collection.create({
       vendor: req.user._id, name, description, products: products || [],
     });
+
+    // Broadcast collection creation
+    const io = req.app.get('io');
+    if (io) {
+      const { broadcastCollectionCreated } = require('../socket/socketManager');
+      broadcastCollectionCreated(io, collection);
+    }
+
     res.status(201).json({ success: true, collection });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -137,6 +146,14 @@ exports.updateCollection = async (req, res) => {
       req.body,
       { new: true }
     );
+
+    // Broadcast collection update
+    const io = req.app.get('io');
+    if (io) {
+      const { broadcastCollectionUpdated } = require('../socket/socketManager');
+      broadcastCollectionUpdated(io, collection);
+    }
+
     res.json({ success: true, collection });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -145,7 +162,16 @@ exports.updateCollection = async (req, res) => {
 
 exports.deleteCollection = async (req, res) => {
   try {
-    await Collection.findOneAndDelete({ _id: req.params.id, vendor: req.user._id });
+    const collectionId = req.params.id;
+    await Collection.findOneAndDelete({ _id: collectionId, vendor: req.user._id });
+
+    // Broadcast collection deletion
+    const io = req.app.get('io');
+    if (io) {
+      const { broadcastCollectionDeleted } = require('../socket/socketManager');
+      broadcastCollectionDeleted(io, collectionId);
+    }
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -207,6 +233,13 @@ exports.createPromotion = async (req, res) => {
       },
     });
 
+    // Broadcast promotion creation
+    const io = req.app.get('io');
+    if (io) {
+      const { broadcastPromotionCreated } = require('../socket/socketManager');
+      broadcastPromotionCreated(io, promotion);
+    }
+
     res.status(201).json({ success: true, promotion });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -220,6 +253,14 @@ exports.updatePromotion = async (req, res) => {
       req.body,
       { new: true }
     );
+
+    // Broadcast promotion update
+    const io = req.app.get('io');
+    if (io) {
+      const { broadcastPromotionUpdated } = require('../socket/socketManager');
+      broadcastPromotionUpdated(io, promotion);
+    }
+
     res.json({ success: true, promotion });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -228,7 +269,16 @@ exports.updatePromotion = async (req, res) => {
 
 exports.deletePromotion = async (req, res) => {
   try {
-    await Promotion.findOneAndDelete({ _id: req.params.id, vendor: req.user._id });
+    const promotionId = req.params.id;
+    await Promotion.findOneAndDelete({ _id: promotionId, vendor: req.user._id });
+
+    // Broadcast promotion deletion
+    const io = req.app.get('io');
+    if (io) {
+      const { broadcastPromotionDeleted } = require('../socket/socketManager');
+      broadcastPromotionDeleted(io, promotionId);
+    }
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -240,6 +290,14 @@ exports.togglePromotion = async (req, res) => {
     const promo    = await Promotion.findOne({ _id: req.params.id, vendor: req.user._id });
     promo.isActive = !promo.isActive;
     await promo.save();
+
+    // Broadcast promotion update
+    const io = req.app.get('io');
+    if (io) {
+      const { broadcastPromotionUpdated } = require('../socket/socketManager');
+      broadcastPromotionUpdated(io, promo);
+    }
+
     res.json({ success: true, isActive: promo.isActive });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -528,7 +586,7 @@ exports.getOverview = async (req, res) => {
         { $group: { _id: null, avg: { $avg: '$rating' }, count: { $sum: 1 } } },
       ]),
       Order.countDocuments({ 'items.vendor': vendorId, status: 'pending' }),
-      Product.countDocuments({ vendor: vendorId, stock: { $lte: 5, $gt: 0 } }),
+      Product.countDocuments({ vendor: vendorId, stock: { $lt: 10 } }),
     ]);
 
     // Commission plateforme (5% par défaut)

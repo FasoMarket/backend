@@ -172,4 +172,177 @@ const sendNotification = async (io, { recipientId, type, title, message, link = 
   }
 };
 
-module.exports = { initSocket, sendNotification, onlineUsers };
+const broadcastProductUpdate = (io, product) => {
+  try {
+    io.emit('product:updated', {
+      productId: product._id,
+      product,
+      timestamp: new Date(),
+    });
+  } catch (err) {
+    console.error('broadcastProductUpdate error:', err);
+  }
+};
+
+const broadcastProductDelete = (io, productId) => {
+  try {
+    io.emit('product:deleted', {
+      productId,
+      timestamp: new Date(),
+    });
+  } catch (err) {
+    console.error('broadcastProductDelete error:', err);
+  }
+};
+
+const broadcastOfferCreated = (io, offer) => {
+  try {
+    io.emit('offer:created', {
+      offer,
+      timestamp: new Date(),
+    });
+  } catch (err) {
+    console.error('broadcastOfferCreated error:', err);
+  }
+};
+
+const broadcastOfferSent = (io, offer) => {
+  try {
+    io.emit('offer:sent', {
+      offer,
+      timestamp: new Date(),
+    });
+  } catch (err) {
+    console.error('broadcastOfferSent error:', err);
+  }
+};
+
+const broadcastOfferDeleted = (io, offerId) => {
+  try {
+    io.emit('offer:deleted', {
+      offerId,
+      timestamp: new Date(),
+    });
+  } catch (err) {
+    console.error('broadcastOfferDeleted error:', err);
+  }
+};
+
+const broadcastPromotionCreated = (io, promotion) => {
+  try {
+    io.emit('promotion:created', {
+      promotion,
+      timestamp: new Date(),
+    });
+  } catch (err) {
+    console.error('broadcastPromotionCreated error:', err);
+  }
+};
+
+const broadcastPromotionUpdated = (io, promotion) => {
+  try {
+    io.emit('promotion:updated', {
+      promotion,
+      timestamp: new Date(),
+    });
+  } catch (err) {
+    console.error('broadcastPromotionUpdated error:', err);
+  }
+};
+
+const broadcastPromotionDeleted = (io, promotionId) => {
+  try {
+    io.emit('promotion:deleted', {
+      promotionId,
+      timestamp: new Date(),
+    });
+  } catch (err) {
+    console.error('broadcastPromotionDeleted error:', err);
+  }
+};
+
+const broadcastCollectionCreated = (io, collection) => {
+  try {
+    io.emit('collection:created', {
+      collection,
+      timestamp: new Date(),
+    });
+  } catch (err) {
+    console.error('broadcastCollectionCreated error:', err);
+  }
+};
+
+const broadcastCollectionUpdated = (io, collection) => {
+  try {
+    io.emit('collection:updated', {
+      collection,
+      timestamp: new Date(),
+    });
+  } catch (err) {
+    console.error('broadcastCollectionUpdated error:', err);
+  }
+};
+
+const broadcastCollectionDeleted = (io, collectionId) => {
+  try {
+    io.emit('collection:deleted', {
+      collectionId,
+      timestamp: new Date(),
+    });
+  } catch (err) {
+    console.error('broadcastCollectionDeleted error:', err);
+  }
+};
+
+const broadcastCommunicationCreated = (io, communication) => {
+  try {
+    io.emit('communication:created', {
+      communication,
+      timestamp: new Date(),
+    });
+  } catch (err) {
+    console.error('broadcastCommunicationCreated error:', err);
+  }
+};
+
+const broadcastCommunicationUpdated = (io, communication) => {
+  try {
+    io.emit('communication:updated', {
+      communication,
+      timestamp: new Date(),
+    });
+  } catch (err) {
+    console.error('broadcastCommunicationUpdated error:', err);
+  }
+};
+
+const broadcastCommunicationDeleted = (io, communicationId) => {
+  try {
+    io.emit('communication:deleted', {
+      communicationId,
+      timestamp: new Date(),
+    });
+  } catch (err) {
+    console.error('broadcastCommunicationDeleted error:', err);
+  }
+};
+
+module.exports = {
+  initSocket,
+  sendNotification,
+  onlineUsers,
+  broadcastProductUpdate,
+  broadcastProductDelete,
+  broadcastOfferCreated,
+  broadcastOfferSent,
+  broadcastOfferDeleted,
+  broadcastPromotionCreated,
+  broadcastPromotionUpdated,
+  broadcastPromotionDeleted,
+  broadcastCollectionCreated,
+  broadcastCollectionUpdated,
+  broadcastCollectionDeleted,
+  broadcastCommunicationCreated,
+  broadcastCommunicationUpdated,
+  broadcastCommunicationDeleted,
+}; 

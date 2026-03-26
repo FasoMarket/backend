@@ -19,11 +19,14 @@ const uploadFields = upload.fields([
   { name: 'banner', maxCount: 1 }
 ]);
 
+// Routes spécifiques AVANT les routes paramétrées
 router.post('/', protect, authorize('vendor'), checkVendorApproval, uploadFields, storeValidation, storeController.createStore);
 router.get('/my-store', protect, authorize('vendor'), storeController.getMyStore);
 router.get('/', storeController.getAllStores);
-router.get('/:identifier', storeController.getStoreByIdOrSlug);
+
+// Routes paramétrées
 router.get('/:identifier/products', storeController.getStoreProducts);
+router.get('/:identifier', storeController.getStoreByIdOrSlug);
 router.put('/:id', protect, authorize('vendor'), checkStoreOwnership, uploadFields, storeController.updateStore);
 router.delete('/:id', protect, authorize('vendor'), checkStoreOwnership, storeController.deleteStore);
 

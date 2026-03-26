@@ -9,6 +9,7 @@ const storeSchema = new mongoose.Schema({
   slug: {
     type: String,
     unique: true,
+    sparse: true,
     lowercase: true,
     trim: true
   },
@@ -55,17 +56,18 @@ const storeSchema = new mongoose.Schema({
 
 // Générer automatiquement le slug à partir du nom
 storeSchema.pre('save', function(next) {
-  if (this.isModified('name') || this.isNew) {
-    this.slug = this.name
+  if (!this.slug || this.isModified('name')) {
+    const baseSlug = this.name
       .toLowerCase()
       .replace(/[^a-z0-9\s-]/g, '') // Supprimer caractères spéciaux
       .replace(/\s+/g, '-')         // Remplacer espaces par tirets
       .replace(/-+/g, '-')          // Éviter tirets multiples
       .trim('-');                   // Supprimer tirets début/fin
     
-    // Ajouter un suffixe si le slug existe déjà
+    // Ajouter un suffixe unique avec timestamp et random
     const timestamp = Date.now().toString().slice(-4);
-    this.slug = `${this.slug}-${timestamp}`;
+    const random = Math.random().toString(36).substring(2, 5);
+    this.slug = `${baseSlug}-${timestamp}-${random}`;
   }
   next();
 });

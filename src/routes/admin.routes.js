@@ -14,6 +14,7 @@ router.put('/vendors/:id/reject',   ...admin, adminCtrl.rejectVendor);
 
 // ── Utilisateurs ──────────────────────────────────────────────────────────────
 router.get('/users',     ...admin, adminCtrl.getUsers);
+router.get('/users/:id', ...admin, adminCtrl.getUserDetail);
 router.delete('/users/:id', ...admin, adminCtrl.deleteUser);
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
@@ -60,6 +61,7 @@ router.get ('/announcements',                  ...admin, advancedCtrl.getAnnounc
 router.post('/announcements/send',             ...admin, advancedCtrl.sendAnnouncement);
 
 // ── Analytiques ───────────────────────────────────────────────────────────────
+router.get('/analytics',                       ...admin, advancedCtrl.getAnalytics);
 router.get('/analytics/overview',              ...admin, advancedCtrl.getOverview);
 router.get('/analytics/revenue',               ...admin, advancedCtrl.getRevenueChart);
 router.get('/analytics/top-products',          ...admin, advancedCtrl.getTopProducts);

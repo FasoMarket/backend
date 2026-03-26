@@ -2,7 +2,8 @@ const Product = require('../models/Product');
 const Store = require('../models/Store');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiFeatures = require('../utils/ApiFeatures');
-const { sendSuccess, sendError, sendPaginatedResponse } = require('../utils/sendResponse');
+const { sendSuccess, sendError, sendPaginatedResponse, sendListResponse } = require('../utils/sendResponse');
+const { transformProduct } = require('../utils/transformers');
 const fs = require('fs');
 const path = require('path');
 
@@ -12,7 +13,7 @@ exports.createProduct = async (req, res) => {
     const store = await Store.findOne({ owner: req.user._id });
     
     if (!store) {
-      return res.status(400).json({ message: 'Vous devez créer une boutique d\'abord' });
+      return sendError(res, 400, 'Vous devez créer une boutique d\'abord');
     }
 
     // Récupérer les chemins des images uploadées
@@ -21,14 +22,25 @@ exports.createProduct = async (req, res) => {
     const product = await Product.create({
       ...req.body,
       images,
-      store: store._id
+      store: store._id,
+      vendor: req.user._id
     });
 
-    res.status(201).json(product);
+    // Populate et transformer
+    await product.populate('store', 'name logo slug');
+    await product.populate('vendor', '_id name email');
+
+    // Broadcast real-time creation to all clients
+    const io = req.app.get('io');
+    if (io) {
+      const { broadcastProductUpdate } = require('../socket/socketManager');
+      broadcastProductUpdate(io, product);
+    }
+
+    sendSuccess(res, 201, transformProduct(product), 'Produit créé avec succès');
   } catch (error) {
     console.error('Erreur createProduct:', error);
-    res.status(500).json({ message: error.message });
-
+    sendError(res, 500, error.message);
   }
 };
 
@@ -38,20 +50,28 @@ exports.getAllProducts = asyncHandler(async (req, res) => {
   const limit = parseInt(req.query.limit, 10) || 12;
   const skip = (page - 1) * limit;
 
-  // Construire la requête
+  // Construire la requête pour le comptage
+  const countQuery = Product.find();
+  const countFeatures = new ApiFeatures(countQuery, req.query)
+    .search()
+    .filter();
+  const total = await countFeatures.query.countDocuments();
+
+  // Construire la requête pour les produits
   const apiFeatures = new ApiFeatures(Product.find(), req.query)
     .search()
     .filter()
     .sort();
 
-  // Compter le total
-  const total = await Product.countDocuments(apiFeatures.query.getFilter());
-
   // Appliquer pagination et populate
   const products = await apiFeatures.query
     .skip(skip)
     .limit(limit)
-    .populate('store', 'name logo');
+    .populate('store', 'name logo slug')
+    .populate('vendor', '_id name email');
+
+  // Transformer les produits
+  const transformedProducts = products.map(transformProduct);
 
   const pagination = {
     page,
@@ -60,21 +80,23 @@ exports.getAllProducts = asyncHandler(async (req, res) => {
     pages: Math.ceil(total / limit)
   };
 
-  sendPaginatedResponse(res, 200, products, pagination);
+  sendPaginatedResponse(res, 200, transformedProducts, pagination);
 });
 
 // Obtenir un produit par ID
 exports.getProductById = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id).populate('store');
+    const product = await Product.findById(req.params.id)
+      .populate('store', 'name logo slug')
+      .populate('vendor', '_id name email');
     
     if (!product) {
-      return res.status(404).json({ message: 'Produit non trouvé' });
+      return sendError(res, 404, 'Produit non trouvé');
     }
 
-    res.json(product);
+    sendSuccess(res, 200, transformProduct(product), 'Produit récupéré');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
 
@@ -84,11 +106,11 @@ exports.updateProduct = async (req, res) => {
     const product = await Product.findById(req.params.id).populate('store');
 
     if (!product) {
-      return res.status(404).json({ message: 'Produit non trouvé' });
+      return sendError(res, 404, 'Produit non trouvé');
     }
 
     if (product.store.owner.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Non autorisé' });
+      return sendError(res, 403, 'Non autorisé');
     }
 
     // Ajouter les nouvelles images si uploadées
@@ -101,11 +123,18 @@ exports.updateProduct = async (req, res) => {
       req.params.id,
       req.body,
       { new: true, runValidators: true }
-    );
+    ).populate('store', 'name logo slug').populate('vendor', '_id name email');
 
-    res.json(updatedProduct);
+    // Broadcast real-time update to all clients
+    const io = req.app.get('io');
+    if (io) {
+      const { broadcastProductUpdate } = require('../socket/socketManager');
+      broadcastProductUpdate(io, updatedProduct);
+    }
+
+    sendSuccess(res, 200, transformProduct(updatedProduct), 'Produit mis à jour');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
 
@@ -115,17 +144,26 @@ exports.deleteProduct = async (req, res) => {
     const product = await Product.findById(req.params.id).populate('store');
 
     if (!product) {
-      return res.status(404).json({ message: 'Produit non trouvé' });
+      return sendError(res, 404, 'Produit non trouvé');
     }
 
     if (product.store.owner.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Non autorisé' });
+      return sendError(res, 403, 'Non autorisé');
     }
 
+    const productId = product._id;
     await product.deleteOne();
-    res.json({ message: 'Produit supprimé avec succès' });
+
+    // Broadcast real-time delete to all clients
+    const io = req.app.get('io');
+    if (io) {
+      const { broadcastProductDelete } = require('../socket/socketManager');
+      broadcastProductDelete(io, productId);
+    }
+
+    sendSuccess(res, 200, null, 'Produit supprimé avec succès');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
 
@@ -135,24 +173,25 @@ exports.addProductImages = async (req, res) => {
     const product = await Product.findById(req.params.id).populate('store');
 
     if (!product) {
-      return res.status(404).json({ message: 'Produit non trouvé' });
+      return sendError(res, 404, 'Produit non trouvé');
     }
 
     if (product.store.owner.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Non autorisé' });
+      return sendError(res, 403, 'Non autorisé');
     }
 
     if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ message: 'Aucune image uploadée' });
+      return sendError(res, 400, 'Aucune image uploadée');
     }
 
     const newImages = req.files.map(file => `/uploads/${file.filename}`);
     product.images.push(...newImages);
     await product.save();
+    await product.populate('store', 'name logo slug').populate('vendor', '_id name email');
 
-    res.json(product);
+    sendSuccess(res, 200, transformProduct(product), 'Images ajoutées');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
 
@@ -163,11 +202,11 @@ exports.deleteProductImage = async (req, res) => {
     const product = await Product.findById(req.params.id).populate('store');
 
     if (!product) {
-      return res.status(404).json({ message: 'Produit non trouvé' });
+      return sendError(res, 404, 'Produit non trouvé');
     }
 
     if (product.store.owner.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Non autorisé' });
+      return sendError(res, 403, 'Non autorisé');
     }
 
     // Supprimer l'image du système de fichiers
@@ -179,16 +218,16 @@ exports.deleteProductImage = async (req, res) => {
     // Retirer l'image du tableau
     product.images = product.images.filter(img => img !== imageUrl);
     await product.save();
+    await product.populate('store', 'name logo slug').populate('vendor', '_id name email');
 
-    res.json(product);
+    sendSuccess(res, 200, transformProduct(product), 'Image supprimée');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
-
 
 // Obtenir les catégories disponibles
 exports.getCategories = asyncHandler(async (req, res) => {
   const categories = await Product.distinct('category');
-  sendSuccess(res, 200, categories, 'Catégories récupérées');
+  sendListResponse(res, 200, categories, 'Catégories récupérées');
 });

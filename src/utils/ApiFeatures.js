@@ -15,7 +15,7 @@ class ApiFeatures {
         }
       : {};
 
-    this.query = this.query.find({ ...keyword });
+    this.query = this.query.where(keyword);
     return this;
   }
 
@@ -38,7 +38,7 @@ class ApiFeatures {
     let queryStr = JSON.stringify(queryCopy);
     queryStr = queryStr.replace(/\b(gte|gt|lte|lt)\b/g, match => `$${match}`);
 
-    this.query = this.query.find(JSON.parse(queryStr));
+    this.query = this.query.where(JSON.parse(queryStr));
     return this;
   }
 

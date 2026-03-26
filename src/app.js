@@ -16,13 +16,22 @@ app.use(helmet({
 }));
 app.use(mongoSanitize());
 
-// CORS
-app.use(cors({
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+// CORS - Accepter toutes les IPs et domaines
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Accepter les requêtes sans origin (mobile, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    // Accepter tous les domaines et IPs
+    callback(null, true);
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 200
+};
+
+app.use(cors(corsOptions));
 
 // Body parser
 app.use(express.json({ limit: '10mb' }));
@@ -32,16 +41,10 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Routes
-app.use('/api/auth', require('./routes/auth.routes'));
-app.use('/api/users', require('./routes/user.routes'));
-app.use('/api/stores', require('./routes/store.routes'));
-app.use('/api/products', require('./routes/product.routes'));
-app.use('/api/cart', require('./routes/cart.routes'));
-app.use('/api/orders', require('./routes/order.routes'));
-app.use('/api/payments', require('./routes/payment.routes'));
-app.use('/api/messages', require('./routes/message.routes'));
-app.use('/api/vendor', require('./routes/vendor.routes'));
-app.use('/api/admin', require('./routes/admin.routes'));
+const apiRoutes = require('./routes/index');
+const configRoutes = require('./routes/config.routes');
+app.use('/api', apiRoutes);
+app.use('/config', configRoutes);
 
 // Route de test
 app.get('/', (req, res) => {

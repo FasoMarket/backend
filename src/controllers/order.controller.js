@@ -5,6 +5,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const AdminSettings = require('../models/AdminSettings');
 const OrderService = require('../services/order.service');
 const { sendSuccess, sendError } = require('../utils/sendResponse');
+const { transformOrder } = require('../utils/transformers');
 const { sendNotification } = require('../socket/socketManager');
 
 // Créer une commande
@@ -12,18 +13,19 @@ exports.createOrder = async (req, res) => {
   try {
     const { paymentMethod, shippingAddress } = req.body;
 
-    const cart = await Cart.findOne({ user: req.user._id }).populate('items.product');
+    const cart = await Cart.findOne({ user: req.user._id }).populate({
+      path: 'items.product',
+      populate: { path: 'vendor store' }
+    });
 
     if (!cart || cart.items.length === 0) {
-      return res.status(400).json({ message: 'Votre panier est vide' });
+      return sendError(res, 400, 'Votre panier est vide');
     }
 
     // Vérifier le stock
     for (const item of cart.items) {
       if (item.product.stock < item.quantity) {
-        return res.status(400).json({ 
-          message: `Stock insuffisant pour ${item.product.name}` 
-        });
+        return sendError(res, 400, `Stock insuffisant pour ${item.product.name}`);
       }
     }
 
@@ -38,8 +40,9 @@ exports.createOrder = async (req, res) => {
       subtotal += itemTotal;
       const itemCommission = (itemTotal * commissionRate) / 100;
       
-      const storeId = item.product?.store || item.product?.vendor || req.user._id; 
-      const vendorId = item.product?.vendor || storeId; // On essaie de récupérer le vendor direct
+      // Récupérer le vendorId depuis le produit
+      const vendorId = item.product?.vendor?._id || item.product?.vendor;
+      const storeId = item.product?.store?._id || item.product?.store;
       
       return {
         product: item.product?._id || item.product,
@@ -67,11 +70,16 @@ exports.createOrder = async (req, res) => {
       totalPrice,
       shippingAddress,
       paymentMethod: paymentMethod || 'mobile_money',
-      // Billing functional
       commissionRate,
       commissionAmount: orderCommissionAmount,
       netAmount: orderNetAmount
     });
+
+    // Populate pour la réponse
+    await order.populate('user', 'name email');
+    await order.populate('items.product');
+    await order.populate('items.store');
+    await order.populate('items.vendor');
 
     // Mettre à jour le stock
     for (const item of cart.items) {
@@ -109,7 +117,7 @@ exports.createOrder = async (req, res) => {
     for (const item of cartItemsSnapshot) {
       try {
         const product = await Product.findById(item.product?._id || item.product);
-        if (product && product.stock <= 5 && product.stock > 0) {
+        if (product && product.stock < 10 && product.stock > 0) {
           const recipientId = product.store || product.vendor;
           if (recipientId) {
             await sendNotification(io, {
@@ -125,23 +133,41 @@ exports.createOrder = async (req, res) => {
       } catch (notifErr) { console.error('Low stock notification error:', notifErr); }
     }
 
-    res.status(201).json(order);
+    sendSuccess(res, 201, transformOrder(order), 'Commande créée avec succès');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
 
 // Obtenir les commandes de l'utilisateur
 exports.getMyOrders = async (req, res) => {
   try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const skip = (page - 1) * limit;
+
+    const total = await Order.countDocuments({ user: req.user._id });
     const orders = await Order.find({ user: req.user._id })
       .populate('items.product')
       .populate('items.store')
-      .sort({ createdAt: -1 });
+      .populate('items.vendor')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
 
-    res.json(orders);
+    const transformedOrders = orders.map(transformOrder);
+
+    sendSuccess(res, 200, {
+      orders: transformedOrders,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    }, 'Commandes récupérées');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendError(res, 500, error.message);
   }
 };
 
@@ -149,11 +175,9 @@ exports.getMyOrders = async (req, res) => {
 exports.getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
-    console.log('DEBUG: Fetching order by ID:', id);
 
     if (!id || id === 'undefined') {
-      console.log('DEBUG: Invalid ID provided');
-      return res.status(400).json({ message: 'ID de commande invalide' });
+      return sendError(res, 400, 'ID de commande invalide');
     }
 
     let order;
@@ -161,31 +185,25 @@ exports.getOrderById = async (req, res) => {
       order = await Order.findById(id)
         .populate('user', 'name email phone')
         .populate('items.product')
-        .populate('items.store');
+        .populate('items.store')
+        .populate('items.vendor');
     } catch (dbErr) {
-      console.error('DEBUG: DB Error during findById:', dbErr);
       if (dbErr.name === 'CastError') {
-        return res.status(400).json({ message: 'Format ID invalide', details: dbErr.message });
+        return sendError(res, 400, 'Format ID invalide');
       }
       throw dbErr;
     }
 
     if (!order) {
-      console.log('DEBUG: Order not found for ID:', id);
-      return res.status(404).json({ message: 'Commande non trouvée' });
+      return sendError(res, 404, 'Commande non trouvée');
     }
 
-    console.log('DEBUG: Order found, checking authorization');
-    
     if (!order.user) {
-      console.error('DEBUG: CRITICAL - Order exists but has no user:', id);
-      return res.status(500).json({ message: 'Données de commande corrompues (User manquant)' });
+      return sendError(res, 500, 'Données de commande corrompues (User manquant)');
     }
 
     const orderUserId = order.user._id ? order.user._id.toString() : order.user.toString();
     const reqUserId = req.user._id.toString();
-
-    console.log(`DEBUG: Comparing order.user (${orderUserId}) with req.user (${reqUserId})`);
 
     // Autoriser l'acheteur, le vendeur concerné ou l'admin
     const isOwner = orderUserId === reqUserId;
@@ -196,18 +214,11 @@ exports.getOrderById = async (req, res) => {
     });
 
     if (!isOwner && !isAdmin && !isVendor) {
-      console.warn(`DEBUG: Unauthorized access attempt by ${reqUserId} on order ${id}`);
-      return res.status(403).json({ message: 'Accès non autorisé à cette commande' });
+      return sendError(res, 403, 'Accès non autorisé à cette commande');
     }
 
-    console.log('DEBUG: Order retrieval successful');
-    res.json(order);
+    sendSuccess(res, 200, transformOrder(order), 'Commande récupérée');
   } catch (error) {
-    console.error('DEBUG: Unexpected error in getOrderById:', error);
-    res.status(500).json({ 
-      message: 'Erreur interne du serveur lors de la récupération de la commande',
-      error: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
+    sendError(res, 500, error.message);
   }
 };
