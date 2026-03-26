@@ -18,13 +18,7 @@ app.use(mongoSanitize());
 
 // CORS - Accepter toutes les IPs et domaines
 const corsOptions = {
-  origin: function (origin, callback) {
-    // Accepter les requêtes sans origin (mobile, Postman, etc.)
-    if (!origin) return callback(null, true);
-    
-    // Accepter tous les domaines et IPs
-    callback(null, true);
-  },
+  origin: true, // Accepter toutes les origines
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -32,6 +26,15 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// Ajouter les headers CORS manuellement pour s'assurer qu'ils sont présents
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  next();
+});
 
 // Body parser
 app.use(express.json({ limit: '10mb' }));
