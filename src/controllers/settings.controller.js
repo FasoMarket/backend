@@ -2,7 +2,12 @@ const AdminSettings  = require('../models/AdminSettings');
 const VendorSettings = require('../models/VendorSettings');
 const User           = require('../models/User');
 const bcrypt         = require('bcrypt');
-const { v4: uuidv4 } = require('uuid');
+const crypto         = require('crypto');
+
+// Générer un UUID v4 compatible CommonJS
+const generateUUID = () => {
+  return crypto.randomUUID();
+};
 
 // ── ADMIN ──────────────────────────────────────────────────────────────────────
 
@@ -98,7 +103,7 @@ exports.updateApi = async (req, res) => {
 
 exports.regenerateApiKey = async (req, res) => {
   try {
-    const newKey = `fm_${uuidv4().replace(/-/g, '')}`;
+    const newKey = `fm_${generateUUID().replace(/-/g, '')}`;
     const settings = await AdminSettings.findOneAndUpdate(
       { singleton: true },
       { $set: { 'api.apiKey': newKey } },
