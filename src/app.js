@@ -17,21 +17,16 @@ app.use(helmet({
 app.use(mongoSanitize());
 
 // CORS - Accepter toutes les IPs et domaines
-const corsOptions = {
-  origin: true, // Accepter toutes les origines
-  credentials: false, // Désactiver credentials pour éviter les conflits avec origin: *
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  optionsSuccessStatus: 200
-};
-
-app.use(cors(corsOptions));
-
-// Ajouter les headers CORS manuellement pour s'assurer qu'ils sont présents
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
+  // Répondre aux requêtes OPTIONS
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  
   next();
 });
 
