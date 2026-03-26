@@ -11,6 +11,7 @@ exports.protect = async (req, res, next) => {
     }
 
     if (!token) {
+      console.log('❌ Token manquant');
       return res.status(401).json({ message: 'Non autorisé, token manquant' });
     }
 
@@ -18,11 +19,14 @@ exports.protect = async (req, res, next) => {
     req.user = await User.findById(decoded.id);
 
     if (!req.user) {
+      console.log('❌ Utilisateur non trouvé:', decoded.id);
       return res.status(401).json({ message: 'Utilisateur non trouvé' });
     }
 
+    console.log('✅ Utilisateur authentifié:', req.user._id);
     next();
   } catch (error) {
+    console.log('❌ Erreur token:', error.message);
     res.status(401).json({ message: 'Token invalide' });
   }
 };

@@ -19,7 +19,7 @@ app.use(mongoSanitize());
 // CORS - Accepter toutes les IPs et domaines
 const corsOptions = {
   origin: true, // Accepter toutes les origines
-  credentials: true,
+  credentials: false, // Désactiver credentials pour éviter les conflits avec origin: *
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   optionsSuccessStatus: 200
@@ -32,7 +32,6 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.header('Access-Control-Allow-Credentials', 'true');
   next();
 });
 
