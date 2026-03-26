@@ -9,9 +9,13 @@ const router = express.Router();
  */
 router.get('/app-config', (req, res) => {
   try {
+    // Déterminer le protocole (https en production, http en dev)
+    const protocol = process.env.NODE_ENV === 'production' ? 'https' : req.protocol;
+    const host = req.get('host');
+    
     const config = {
-      apiUrl: process.env.API_URL || `${req.protocol}://${req.get('host')}/api`,
-      socketUrl: process.env.SOCKET_URL || `${req.protocol}://${req.get('host')}`,
+      apiUrl: process.env.API_URL || `${protocol}://${host}/api`,
+      socketUrl: process.env.SOCKET_URL || `${protocol}://${host}`,
       environment: process.env.NODE_ENV || 'development',
       version: '1.0.0',
     };
