@@ -310,6 +310,11 @@ exports.getOrders = async (req, res) => {
   try {
     const { status, page = 1, limit = 20, startDate, endDate } = req.query;
 
+    // Vérifier que req.user existe
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ success: false, message: 'Utilisateur non authentifié' });
+    }
+
     const match = { 'items.vendor': req.user._id };
     if (status) match.status = status;
     if (startDate || endDate) {
@@ -330,12 +335,13 @@ exports.getOrders = async (req, res) => {
       items: o.items.filter(i => i.vendor?.toString() === req.user._id.toString()),
       vendorTotal: o.items
         .filter(i => i.vendor?.toString() === req.user._id.toString())
-        .reduce((sum, i) => sum + i.subtotal, 0),
+        .reduce((sum, i) => sum + (i.subtotal || 0), 0),
     }));
 
     const total = await Order.countDocuments(match);
     res.json({ success: true, orders: filtered, total, page: Number(page) });
   } catch (err) {
+    console.error('❌ Erreur getOrders:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
