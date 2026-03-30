@@ -507,7 +507,19 @@ exports.validatePromoCode = async (req, res) => {
     if (orderAmount < promo.minOrderAmount) return res.status(400).json({ success: false, message: `Commande minimum ${promo.minOrderAmount.toLocaleString()} FCFA` });
 
     const discount = promo.type === 'percentage' ? Math.round(orderAmount * promo.value / 100) : promo.value;
-    res.json({ success: true, promo: { code: promo.code, type: promo.type, value: promo.value, discount: Math.min(discount, orderAmount), newTotal: Math.max(0, orderAmount - discount) } });
+    res.json({ 
+      success: true, 
+      data: {
+        promo: { 
+          code: promo.code, 
+          type: promo.type, 
+          value: promo.value, 
+          discount: Math.min(discount, orderAmount), 
+          newTotal: Math.max(0, orderAmount - discount),
+          store: promo.store
+        }
+      }
+    });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };
 

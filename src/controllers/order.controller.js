@@ -109,6 +109,8 @@ exports.createOrder = async (req, res) => {
       totalPrice,
       shippingAddress,
       paymentMethod: paymentMethod || 'mobile_money',
+      paymentStatus: 'pending',
+      orderStatus: 'pending',
       commissionRate,
       commissionAmount: orderCommissionAmount,
       netAmount: orderNetAmount,

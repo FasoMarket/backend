@@ -11,6 +11,8 @@ const promoCodeSchema = new mongoose.Schema({
   startDate:      { type: Date, default: Date.now },
   endDate:        { type: Date, default: null },
   usedBy:         [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  vendor:         { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  store:          { type: mongoose.Schema.Types.ObjectId, ref: 'Store', default: null },
 }, { timestamps: true });
 
 module.exports = mongoose.model('PromoCode', promoCodeSchema);

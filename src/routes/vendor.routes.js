@@ -8,4 +8,10 @@ router.get('/orders', protect, authorize('vendor'), checkVendorApproval, vendorC
 router.get('/stats', protect, authorize('vendor'), checkVendorApproval, vendorController.getVendorStats);
 router.put('/orders/:orderId/status', protect, authorize('vendor'), checkVendorApproval, vendorController.updateOrderStatus);
 
+// ── CODES PROMO ────────────────────────────────────────────────────────────────
+router.post('/promo-codes', protect, authorize('vendor'), checkVendorApproval, vendorController.createPromoCode);
+router.get('/promo-codes', protect, authorize('vendor'), checkVendorApproval, vendorController.getMyPromoCodes);
+router.put('/promo-codes/:id', protect, authorize('vendor'), checkVendorApproval, vendorController.updatePromoCode);
+router.delete('/promo-codes/:id', protect, authorize('vendor'), checkVendorApproval, vendorController.deletePromoCode);
+
 module.exports = router;

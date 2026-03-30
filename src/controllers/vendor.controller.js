@@ -121,3 +121,79 @@ exports.updateOrderStatus = asyncHandler(async (req, res) => {
 
   sendSuccess(res, 200, order, 'Statut mis à jour');
 });
+
+
+// ── CODES PROMO ────────────────────────────────────────────────────────────────
+
+const PromoCode = require('../models/PromoCode');
+
+// Créer un code promo
+exports.createPromoCode = asyncHandler(async (req, res) => {
+  const store = await Store.findOne({ owner: req.user._id });
+  if (!store) {
+    return res.status(404).json({ message: 'Boutique non trouvée' });
+  }
+
+  const { code, type, value, minOrderAmount, maxUses, startDate, endDate } = req.body;
+  
+  const promoCode = await PromoCode.create({
+    code: code?.toUpperCase(),
+    type,
+    value,
+    minOrderAmount: minOrderAmount || 0,
+    maxUses: maxUses || null,
+    startDate: startDate || new Date(),
+    endDate: endDate || null,
+    vendor: req.user._id,
+    store: store._id,
+    isActive: true
+  });
+
+  sendSuccess(res, 201, promoCode, 'Code promo créé avec succès');
+});
+
+// Obtenir les codes promo du vendeur
+exports.getMyPromoCodes = asyncHandler(async (req, res) => {
+  const store = await Store.findOne({ owner: req.user._id });
+  if (!store) {
+    return res.status(404).json({ message: 'Boutique non trouvée' });
+  }
+
+  const promoCodes = await PromoCode.find({ store: store._id }).sort({ createdAt: -1 });
+  sendSuccess(res, 200, promoCodes, 'Codes promo récupérés');
+});
+
+// Mettre à jour un code promo
+exports.updatePromoCode = asyncHandler(async (req, res) => {
+  const store = await Store.findOne({ owner: req.user._id });
+  if (!store) {
+    return res.status(404).json({ message: 'Boutique non trouvée' });
+  }
+
+  const promoCode = await PromoCode.findById(req.params.id);
+  if (!promoCode || promoCode.store.toString() !== store._id.toString()) {
+    return res.status(403).json({ message: 'Non autorisé' });
+  }
+
+  Object.assign(promoCode, req.body);
+  await promoCode.save();
+
+  sendSuccess(res, 200, promoCode, 'Code promo mis à jour');
+});
+
+// Supprimer un code promo
+exports.deletePromoCode = asyncHandler(async (req, res) => {
+  const store = await Store.findOne({ owner: req.user._id });
+  if (!store) {
+    return res.status(404).json({ message: 'Boutique non trouvée' });
+  }
+
+  const promoCode = await PromoCode.findById(req.params.id);
+  if (!promoCode || promoCode.store.toString() !== store._id.toString()) {
+    return res.status(403).json({ message: 'Non autorisé' });
+  }
+
+  await PromoCode.deleteOne({ _id: req.params.id });
+  sendSuccess(res, 200, null, 'Code promo supprimé');
+});
+

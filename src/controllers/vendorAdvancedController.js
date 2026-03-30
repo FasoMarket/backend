@@ -434,7 +434,7 @@ exports.getReviews = async (req, res) => {
     console.log('📝 getReviews - Avis trouvés:', reviews.length);
     console.log('📝 getReviews - Total:', total);
 
-    res.json({ success: true, data: { reviews, total } });
+    res.json({ success: true, reviews, total });
   } catch (err) {
     console.error('❌ Erreur getReviews:', err);
     res.status(500).json({ success: false, message: err.message });
@@ -487,7 +487,7 @@ exports.getReviewStats = async (req, res) => {
       },
     ]);
 
-    res.json({ success: true, data: { stats: stats[0] || { average: 0, total: 0, replied: 0 } } });
+    res.json({ success: true, stats: stats[0] || { average: 0, total: 0, replied: 0 } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -533,16 +533,16 @@ exports.getOverview = async (req, res) => {
       Order.countDocuments({ 'items.vendor': vendorId }),
       Order.countDocuments({ 'items.vendor': vendorId, createdAt: { $gte: startMonth } }),
       Order.aggregate([
-        { $match: { 'items.vendor': vendorId, orderStatus: 'delivered' } },
+        { $match: { 'items.vendor': vendorId, paymentStatus: 'paid', orderStatus: { $ne: 'cancelled' } } },
         { $unwind: '$items' },
         { $match: { 'items.vendor': vendorId } },
-        { $group: { _id: null, total: { $sum: '$items.subtotal' } } },
+        { $group: { _id: null, total: { $sum: { $multiply: ['$items.price', '$items.quantity'] } } } },
       ]),
       Order.aggregate([
-        { $match: { 'items.vendor': vendorId, orderStatus: 'delivered', createdAt: { $gte: startMonth } } },
+        { $match: { 'items.vendor': vendorId, paymentStatus: 'paid', orderStatus: { $ne: 'cancelled' }, createdAt: { $gte: startMonth } } },
         { $unwind: '$items' },
         { $match: { 'items.vendor': vendorId } },
-        { $group: { _id: null, total: { $sum: '$items.subtotal' } } },
+        { $group: { _id: null, total: { $sum: { $multiply: ['$items.price', '$items.quantity'] } } } },
       ]),
       Review.aggregate([
         { $match: { vendor: vendorId } },

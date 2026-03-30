@@ -490,31 +490,61 @@ exports.getMyWallet = async (req, res) => {
     let wallet = await VendorWallet.findOne({ vendor: req.user._id });
     if (!wallet) wallet = await VendorWallet.create({ vendor: req.user._id });
 
-    const paidOrderIds = await VendorPayout.find({
-      vendor: req.user._id, status: { $in: ['paid', 'processing'] },
-    }).distinct('orders');
-
-    const unpaidOrders = await Order.find({
-      'items.vendor': req.user._id, orderStatus: 'delivered',
-      _id: { $nin: paidOrderIds },
-    });
-
     const AdminSettings = require('../models/AdminSettings');
     const settings = await AdminSettings.findOne({ singleton: true });
     const commissionRate = settings?.billing?.commissionRate || 5;
 
+    // Récupérer les versements confirmés (paid)
+    const paidPayouts = await VendorPayout.find({
+      vendor: req.user._id, 
+      status: 'paid'
+    });
+
+    const totalPaid = paidPayouts.reduce((sum, payout) => sum + payout.amount, 0);
+
+    // Récupérer les versements en cours (processing)
+    const processingPayouts = await VendorPayout.find({
+      vendor: req.user._id, 
+      status: 'processing'
+    });
+
+    const processingAmount = processingPayouts.reduce((sum, payout) => sum + payout.amount, 0);
+
+    // Récupérer les IDs des commandes déjà payées (paid + processing)
+    const paidOrderIds = await VendorPayout.find({
+      vendor: req.user._id, 
+      status: { $in: ['paid', 'processing'] },
+    }).distinct('orders');
+
+    // Trouver les commandes livrées mais pas encore payées
+    const unpaidOrders = await Order.find({
+      'items.vendor': req.user._id, 
+      orderStatus: 'delivered',
+      _id: { $nin: paidOrderIds },
+    });
+
+    // Calculer le revenu brut en attente
     const pendingGross = unpaidOrders.reduce((s, o) => {
       return s + o.items
         .filter(i => i.vendor?.toString() === req.user._id.toString())
         .reduce((si, i) => si + (i.price * i.quantity), 0);
     }, 0);
 
+    // Calculer le revenu net en attente (après commission)
+    const pendingNet = Math.round(pendingGross * (1 - commissionRate / 100));
+
+    // Total gagné = versements confirmés + versements en cours + en attente
+    const totalEarned = totalPaid + processingAmount + pendingNet;
+
     res.json({
       success: true,
       wallet: {
         ...wallet.toObject(),
-        pendingBalance: Math.round(pendingGross * (1 - commissionRate / 100)),
+        totalEarned,           // Total de tous les revenus
+        pendingBalance: pendingNet,  // Seulement ce qui est en attente de versement
         pendingGross,
+        totalPaid,             // Versements confirmés
+        processingAmount,      // Versements en cours
         commissionRate,
         unpaidOrderCount: unpaidOrders.length,
       },
@@ -528,7 +558,7 @@ exports.getMyPayouts = async (req, res) => {
   try {
     const payouts = await VendorPayout.find({ vendor: req.user._id })
       .populate('processedBy', 'name').sort('-createdAt');
-    res.json({ success: true, payouts });
+    res.json({ success: true, data: payouts });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

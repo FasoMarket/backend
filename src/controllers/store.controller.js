@@ -182,3 +182,33 @@ exports.getMyStore = async (req, res) => {
     sendError(res, 500, error.message);
   }
 };
+
+// Obtenir les codes promo actifs d'une boutique
+exports.getStorePromoCodes = async (req, res) => {
+  try {
+    const { identifier } = req.params;
+    const PromoCode = require('../models/PromoCode');
+    
+    const query = mongoose.Types.ObjectId.isValid(identifier) 
+      ? { _id: identifier }
+      : { slug: identifier };
+    
+    const store = await Store.findOne(query);
+    
+    if (!store) {
+      return sendError(res, 404, 'Boutique non trouvée');
+    }
+    
+    const now = new Date();
+    const promoCodes = await PromoCode.find({
+      store: store._id,
+      isActive: true,
+      startDate: { $lte: now },
+      endDate: { $gte: now }
+    }).select('code type value minOrderAmount maxUses usedCount startDate endDate');
+    
+    sendListResponse(res, 200, promoCodes, 'Codes promo récupérés');
+  } catch (error) {
+    sendError(res, 500, error.message);
+  }
+};

@@ -26,6 +26,7 @@ router.get('/', storeController.getAllStores);
 
 // Routes paramétrées
 router.get('/:identifier/products', storeController.getStoreProducts);
+router.get('/:identifier/promo-codes', storeController.getStorePromoCodes);
 router.get('/:identifier', storeController.getStoreByIdOrSlug);
 router.put('/:id', protect, authorize('vendor'), checkStoreOwnership, uploadFields, storeController.updateStore);
 router.delete('/:id', protect, authorize('vendor'), checkStoreOwnership, storeController.deleteStore);

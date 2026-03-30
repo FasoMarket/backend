@@ -23,6 +23,7 @@ exports.transformProduct = (product) => {
   const imageUrl = images.length > 0 ? images[0] : null;
 
   return {
+    _id: product._id?.toString(),
     id: product._id?.toString(),
     name: product.name,
     description: product.description,
@@ -34,6 +35,12 @@ exports.transformProduct = (product) => {
     storeId,
     storeName: product.store?.name,
     storeSlug: product.store?.slug,
+    store: {
+      id: storeId,
+      name: product.store?.name,
+      slug: product.store?.slug,
+      logo: product.store?.logo || null
+    },
     vendorId,
     vendorName: product.vendor?.name,
     rating: product.rating || { average: 0, count: 0 },
