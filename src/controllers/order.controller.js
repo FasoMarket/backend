@@ -3,6 +3,7 @@ const Cart = require('../models/Cart');
 const Product = require('../models/Product');
 const asyncHandler = require('../utils/asyncHandler');
 const AdminSettings = require('../models/AdminSettings');
+const PromoCode = require('../models/PromoCode');
 const OrderService = require('../services/order.service');
 const { sendSuccess, sendError } = require('../utils/sendResponse');
 const { transformOrder } = require('../utils/transformers');
@@ -11,12 +12,17 @@ const { sendNotification } = require('../socket/socketManager');
 // Créer une commande
 exports.createOrder = async (req, res) => {
   try {
-    const { paymentMethod, shippingAddress } = req.body;
+    console.log('📦 Création commande - user:', req.user._id);
+    console.log('📦 Body reçu:', JSON.stringify(req.body, null, 2));
+    
+    const { paymentMethod, shippingAddress, promoCode } = req.body;
 
     const cart = await Cart.findOne({ user: req.user._id }).populate({
       path: 'items.product',
       populate: { path: 'vendor store' }
     });
+
+    console.log('📦 Panier trouvé:', cart ? `${cart.items?.length || 0} articles` : 'null');
 
     if (!cart || cart.items.length === 0) {
       return sendError(res, 400, 'Votre panier est vide');
@@ -24,6 +30,10 @@ exports.createOrder = async (req, res) => {
 
     // Vérifier le stock
     for (const item of cart.items) {
+      if (!item.product) {
+        console.log('⚠️ Produit null dans le panier');
+        continue;
+      }
       if (item.product.stock < item.quantity) {
         return sendError(res, 400, `Stock insuffisant pour ${item.product.name}`);
       }
@@ -57,7 +67,36 @@ exports.createOrder = async (req, res) => {
 
     // Frais de livraison (Gratuit si > 50000)
     const shippingFee = subtotal > 50000 ? 0 : 1500;
-    const totalPrice = subtotal + shippingFee;
+    
+    // 🔥 PROMO CODE LOGIC
+    let discountAmount = 0;
+    let appliedPromo = null;
+
+    if (promoCode) {
+      const promo = await PromoCode.findOne({ code: promoCode.toUpperCase(), isActive: true });
+      if (promo) {
+        const now = new Date();
+        const isStarted = !promo.startDate || promo.startDate <= now;
+        const isNotExpired = !promo.endDate || promo.endDate >= now;
+        const hasUsesLeft = !promo.maxUses || promo.usedCount < promo.maxUses;
+        const notUsedByUser = !promo.usedBy.includes(req.user._id);
+        const amountMet = subtotal >= promo.minOrderAmount;
+
+        if (isStarted && isNotExpired && hasUsesLeft && notUsedByUser && amountMet) {
+          discountAmount = promo.type === 'percentage' 
+            ? Math.round(subtotal * promo.value / 100) 
+            : promo.value;
+          
+          discountAmount = Math.min(discountAmount, subtotal); // Cannot discount more than subtotal
+          appliedPromo = promo;
+          console.log(`✅ Promo appliquée: ${promoCode} (-${discountAmount} FCFA)`);
+        } else {
+          console.log(`⚠️ Promo Code ${promoCode} rejeté:`, { isStarted, isNotExpired, hasUsesLeft, notUsedByUser, amountMet });
+        }
+      }
+    }
+
+    const totalPrice = Math.max(0, subtotal - discountAmount) + shippingFee;
 
     // Calculer les totaux de commission pour la commande entière
     const orderCommissionAmount = orderItems.reduce((sum, item) => sum + item.commissionAmount, 0);
@@ -72,8 +111,18 @@ exports.createOrder = async (req, res) => {
       paymentMethod: paymentMethod || 'mobile_money',
       commissionRate,
       commissionAmount: orderCommissionAmount,
-      netAmount: orderNetAmount
+      netAmount: orderNetAmount,
+      promoCode: appliedPromo ? appliedPromo.code : null,
+      discountAmount
     });
+
+    // Update Promo Code usage
+    if (appliedPromo) {
+      await PromoCode.findByIdAndUpdate(appliedPromo._id, {
+        $inc: { usedCount: 1 },
+        $push: { usedBy: req.user._id }
+      });
+    }
 
     // Populate pour la réponse
     await order.populate('user', 'name email');
@@ -135,6 +184,7 @@ exports.createOrder = async (req, res) => {
 
     sendSuccess(res, 201, transformOrder(order), 'Commande créée avec succès');
   } catch (error) {
+    console.error('❌ Erreur création commande:', error);
     sendError(res, 500, error.message);
   }
 };

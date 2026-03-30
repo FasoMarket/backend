@@ -17,8 +17,9 @@ exports.transformProduct = (product) => {
   const vendorId = product.vendor?._id?.toString() || product.vendor?.toString() || null;
   const storeId = product.store?._id?.toString() || product.store?.toString() || null;
   
-  // Formater les images
-  const images = product.images?.map(img => formatImageUrl(img)) || [];
+  // Retourner les chemins relatifs des images (sans BASE_URL)
+  // Le client (web/mobile) se chargera de construire l'URL complète
+  const images = product.images || [];
   const imageUrl = images.length > 0 ? images[0] : null;
 
   return {
@@ -52,11 +53,14 @@ exports.transformOrder = (order) => {
 
   return {
     id: order._id?.toString(),
-    userId: order.user?._id?.toString() || order.user?.toString(),
+    user: order.user?._id?.toString() || order.user?.toString(),
     items: order.items?.map(item => ({
-      productId: item.product?._id?.toString() || item.product?.toString(),
-      productName: item.product?.name,
-      productImage: item.product?.images?.[0] ? formatImageUrl(item.product.images[0]) : null,
+      product: {
+        id: item.product?._id?.toString() || item.product?.toString(),
+        name: item.product?.name,
+        images: item.product?.images || [],
+        imageUrl: item.product?.images?.[0] || null,
+      },
       storeId: item.store?._id?.toString() || item.store?.toString(),
       vendorId: item.vendor?._id?.toString() || item.vendor?.toString(),
       quantity: item.quantity,
@@ -67,10 +71,13 @@ exports.transformOrder = (order) => {
     totalPrice: order.totalPrice,
     shippingAddress: order.shippingAddress,
     paymentMethod: order.paymentMethod,
-    status: order.status,
+    orderStatus: order.orderStatus,
+    status: order.orderStatus, // Keep status as alias
     commissionRate: order.commissionRate,
     commissionAmount: order.commissionAmount,
     netAmount: order.netAmount,
+    promoCode: order.promoCode,
+    discountAmount: order.discountAmount,
     createdAt: order.createdAt,
     updatedAt: order.updatedAt
   };
@@ -86,7 +93,7 @@ exports.transformCart = (cart) => {
     items: cart.items?.map(item => ({
       productId: item.product?._id?.toString() || item.product?.toString(),
       productName: item.product?.name,
-      productImage: item.product?.images?.[0] ? formatImageUrl(item.product.images[0]) : null,
+      productImage: item.product?.images?.[0] || null,
       price: item.price,
       quantity: item.quantity,
       subtotal: (item.price || 0) * item.quantity
@@ -111,14 +118,14 @@ exports.transformConversation = (conversation, currentUserId) => {
       id: p._id?.toString(),
       name: p.name,
       email: p.email,
-      avatar: p.avatar ? formatImageUrl(p.avatar) : null,
+      avatar: p.avatar || null,
       role: p.role
     })) || [],
     otherParticipant: otherParticipant ? {
       id: otherParticipant._id?.toString(),
       name: otherParticipant.name,
       email: otherParticipant.email,
-      avatar: otherParticipant.avatar ? formatImageUrl(otherParticipant.avatar) : null,
+      avatar: otherParticipant.avatar || null,
       role: otherParticipant.role
     } : null,
     lastMessage: conversation.lastMessage,
@@ -140,10 +147,8 @@ exports.transformMessage = (message) => {
   if (message.type === 'product_link') {
     try {
       parsedContent = JSON.parse(message.content);
-      // Formater les URLs d'images
-      if (parsedContent.productImage) {
-        parsedContent.productImage = formatImageUrl(parsedContent.productImage);
-      }
+      // Garder les chemins relatifs des images
+      // Le client se chargera de construire l'URL complète
     } catch (e) {
       // Si le parsing échoue, garder le contenu brut
     }
@@ -173,7 +178,7 @@ exports.transformUser = (user) => {
     name: user.name,
     email: user.email,
     role: user.role,
-    avatar: user.avatar ? formatImageUrl(user.avatar) : null,
+    avatar: user.avatar || null,
     phone: user.phone,
     isVendorApproved: user.isVendorApproved,
     shopName: user.shopName,
@@ -197,8 +202,8 @@ exports.transformStore = (store) => {
     description: store.description,
     ownerId: store.owner?._id?.toString() || store.owner?.toString(),
     ownerName: store.owner?.name,
-    logo: store.logo ? formatImageUrl(store.logo) : null,
-    banner: store.banner ? formatImageUrl(store.banner) : null,
+    logo: store.logo || null,
+    banner: store.banner || null,
     phone: store.phone,
     address: store.address,
     socialLinks: store.socialLinks,

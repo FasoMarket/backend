@@ -15,6 +15,7 @@ const messageRoutes      = require('./message.routes');
 const notificationRoutes = require('./notification.routes');
 const communicationRoutes = require('./communication.routes');
 const uploadRoutes       = require('./upload.routes');
+const reviewRoutes       = require('./review.routes');
 
 const { protect, authorize } = require('../middlewares/auth.middleware');
 const upload = require('../config/multer');
@@ -106,9 +107,9 @@ router.get   ('/vendor/orders-advanced/:id',         protect, isVendeur, vendorA
 router.put   ('/vendor/orders-advanced/:id/status',  protect, isVendeur, vendorAdvancedCtrl.updateOrderStatus);
 
 // ── AVIS ──────────────────────────────────────────────────────────────────────
+router.get   ('/vendor/reviews/stats',               protect, isVendeur, vendorAdvancedCtrl.getReviewStats);
 router.get   ('/vendor/reviews',                     protect, isVendeur, vendorAdvancedCtrl.getReviews);
 router.post  ('/vendor/reviews/:id/reply',           protect, isVendeur, vendorAdvancedCtrl.replyToReview);
-router.get   ('/vendor/reviews/stats',               protect, isVendeur, vendorAdvancedCtrl.getReviewStats);
 router.get   ('/reviews/product/:productId',         vendorAdvancedCtrl.getProductReviews);
 router.get   ('/reviews/store/:vendorId',            vendorAdvancedCtrl.getStoreReviews);
 
@@ -167,5 +168,6 @@ router.use('/messages',      messageRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/communications', communicationRoutes);
 router.use('/upload',        uploadRoutes);
+router.use('/reviews',       reviewRoutes);
 
 module.exports = router;

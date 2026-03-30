@@ -197,8 +197,8 @@ exports.cancelOrder = async (req, res) => {
 
     // Notifier les vendeurs
     const io        = req.app.get('io');
-    const fullOrder = await Order.findById(order._id).populate('items.store', 'owner');
-    const vendorIds = [...new Set(fullOrder.items.map(i => i.store?.owner?.toString()))].filter(Boolean);
+    const fullOrder = await Order.findById(order._id).populate('items.vendor');
+    const vendorIds = [...new Set(fullOrder.items.map(i => i.vendor?.toString()))].filter(Boolean);
     for (const vendorId of vendorIds) {
       await sendNotification(io, {
         recipientId: vendorId, type: 'order_cancelled',
@@ -389,8 +389,33 @@ exports.getMyRefunds = async (req, res) => {
 exports.createReview = async (req, res) => {
   try {
     const { productId, orderId, rating, comment } = req.body;
-    const order   = await Order.findOne({ _id: orderId, user: req.user._id, orderStatus: 'delivered' });
-    if (!order) return res.status(400).json({ success: false, message: 'Vous ne pouvez noter que les commandes livrées' });
+    
+    console.log('📝 createReview - Données reçues:', { productId, orderId, rating, comment, userId: req.user._id });
+    
+    // Vérifier que productId n'est pas vide
+    if (!productId || productId.trim() === '') {
+      console.log('❌ productId vide');
+      return res.status(400).json({ success: false, message: 'ID du produit manquant' });
+    }
+    
+    const order = await Order.findOne({ _id: orderId, user: req.user._id, orderStatus: 'delivered' });
+    console.log('📝 createReview - Commande trouvée:', order ? 'OUI' : 'NON');
+    
+    if (!order) {
+      console.log('❌ Commande non trouvée ou statut incorrect');
+      return res.status(400).json({ success: false, message: 'Commande non trouvée ou non livrée' });
+    }
+    
+    // Vérifier que le produit est dans la commande
+    const itemInOrder = order.items.some(item => item.product.toString() === productId);
+    console.log('📝 createReview - Produit dans commande:', itemInOrder ? 'OUI' : 'NON');
+    console.log('📝 createReview - Items:', order.items.map(i => i.product.toString()));
+    
+    if (!itemInOrder) {
+      console.log('❌ Produit non trouvé dans la commande');
+      return res.status(400).json({ success: false, message: 'Ce produit n\'est pas dans cette commande' });
+    }
+    
     const product = await Product.findById(productId);
     if (!product) return res.status(404).json({ success: false, message: 'Produit introuvable' });
 
@@ -401,15 +426,19 @@ exports.createReview = async (req, res) => {
     await User.findByIdAndUpdate(req.user._id, { $inc: { 'stats.totalReviews': 1 } });
 
     const io = req.app.get('io');
-    await sendNotification(io, {
-      recipientId: product.vendor, type: 'avis',
-      title: `⭐ Nouvel avis ${rating}/5`,
-      message: `${req.user.name} a laissé un avis sur "${product.name}"`,
-      link: '/vendor/reviews',
-    });
+    // Envoyer la notification de manière non-bloquante
+    if (io) {
+      sendNotification(io, {
+        recipientId: product.vendor, type: 'avis',
+        title: `⭐ Nouvel avis ${rating}/5`,
+        message: `${req.user.name} a laissé un avis sur "${product.name}"`,
+        link: '/vendor/reviews',
+      }).catch(err => console.error('Erreur envoi notification:', err));
+    }
 
     res.status(201).json({ success: true, review });
   } catch (err) {
+    console.error('❌ Erreur createReview:', err);
     if (err.code === 11000) return res.status(400).json({ success: false, message: 'Vous avez déjà noté ce produit pour cette commande' });
     res.status(500).json({ success: false, message: err.message });
   }
@@ -488,7 +517,7 @@ exports.getClientStats = async (req, res) => {
   try {
     const [totalOrders, totalSpent, totalReviews, favoriteVendors] = await Promise.all([
       Order.countDocuments({ user: req.user._id }),
-      Order.aggregate([{ $match: { user: req.user._id, status: 'delivered' } }, { $group: { _id: null, total: { $sum: '$totalPrice' } } }]),
+      Order.aggregate([{ $match: { user: req.user._id, orderStatus: 'delivered' } }, { $group: { _id: null, total: { $sum: '$totalPrice' } } }]),
       Review.countDocuments({ customer: req.user._id }),
       Order.aggregate([
         { $match: { user: req.user._id } }, { $unwind: '$items' },

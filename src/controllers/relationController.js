@@ -21,8 +21,8 @@ exports.getMyBuyers = async (req, res) => {
   try {
     const { filter = 'all' } = req.query;
     const orders = await Order.find({
-      'items.store': req.user._id,
-      status: 'delivered',
+      'items.vendor': req.user._id,
+      orderStatus: 'delivered',
     }).populate('user', 'name email avatar createdAt');
 
     const buyerMap = new Map();
@@ -40,7 +40,7 @@ exports.getMyBuyers = async (req, res) => {
       const buyer = buyerMap.get(customerId);
       buyer.orderCount++;
       buyer.totalSpent += order.items
-        .filter(i => i.store?.toString() === req.user._id.toString())
+        .filter(i => i.vendor?.toString() === req.user._id.toString())
         .reduce((s, i) => s + (i.price * i.quantity), 0);
       if (order.createdAt > buyer.lastOrderAt) buyer.lastOrderAt = order.createdAt;
     }
@@ -93,7 +93,7 @@ exports.sendOffer = async (req, res) => {
     if (offer.targets === 'specific') {
       recipientIds = offer.targetUsers.map(u => u.toString());
     } else {
-      const matchFilter = { 'items.store': req.user._id, status: 'delivered' };
+      const matchFilter = { 'items.vendor': req.user._id, orderStatus: 'delivered' };
       if (offer.targets === 'recent_buyers') {
         matchFilter.createdAt = { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) };
       }
@@ -171,7 +171,7 @@ exports.getProductSocialProof = async (req, res) => {
 
     const [buyersAgg, reviews, wishlistCount] = await Promise.all([
       Order.aggregate([
-        { $match: { 'items.product': pid, status: 'delivered' } },
+        { $match: { 'items.product': pid, orderStatus: 'delivered' } },
         { $group: { _id: '$user' } },
         { $limit: 5 },
         { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
@@ -262,7 +262,7 @@ exports.getVendorEarnings = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
     const vendorId = new mongoose.Types.ObjectId(req.params.id);
-    const match = { 'items.store': vendorId, status: 'delivered' };
+    const match = { 'items.vendor': vendorId, orderStatus: 'delivered' };
     if (startDate || endDate) {
       match.createdAt = {};
       if (startDate) match.createdAt.$gte = new Date(startDate);
@@ -276,7 +276,7 @@ exports.getVendorEarnings = async (req, res) => {
     let grossAmount = 0;
     const orderDetails = [];
     for (const order of unpaidOrders) {
-      const vendorItems = order.items.filter(i => i.store?.toString() === req.params.id);
+      const vendorItems = order.items.filter(i => i.vendor?.toString() === req.params.id);
       const orderTotal = vendorItems.reduce((s, i) => s + (i.price * i.quantity), 0);
       grossAmount += orderTotal;
       orderDetails.push({ orderId: order._id, amount: orderTotal, date: order.createdAt });
@@ -329,9 +329,9 @@ exports.getPendingPayouts = async (req, res) => {
 
     // Get all unique vendor IDs from delivered orders
     const vendorIds = await Order.aggregate([
-      { $match: { status: 'delivered' } },
+      { $match: { orderStatus: 'delivered' } },
       { $unwind: '$items' },
-      { $group: { _id: '$items.store' } },
+      { $group: { _id: '$items.vendor' } },
       { $match: { _id: { $ne: null } } },
     ]);
 
@@ -343,8 +343,8 @@ exports.getPendingPayouts = async (req, res) => {
         }).distinct('orders');
 
         const unpaidOrders = await Order.find({
-          'items.store': vendorId,
-          status: 'delivered',
+          'items.vendor': vendorId,
+          orderStatus: 'delivered',
           _id: { $nin: paidOrderIds },
         });
 
@@ -352,7 +352,7 @@ exports.getPendingPayouts = async (req, res) => {
 
         const gross = unpaidOrders.reduce((s, o) => {
           return s + o.items
-            .filter(i => i.store?.toString() === vendorId.toString())
+            .filter(i => i.vendor?.toString() === vendorId.toString())
             .reduce((si, i) => si + (i.price * i.quantity), 0);
         }, 0);
 
@@ -495,7 +495,7 @@ exports.getMyWallet = async (req, res) => {
     }).distinct('orders');
 
     const unpaidOrders = await Order.find({
-      'items.store': req.user._id, status: 'delivered',
+      'items.vendor': req.user._id, orderStatus: 'delivered',
       _id: { $nin: paidOrderIds },
     });
 
@@ -505,7 +505,7 @@ exports.getMyWallet = async (req, res) => {
 
     const pendingGross = unpaidOrders.reduce((s, o) => {
       return s + o.items
-        .filter(i => i.store?.toString() === req.user._id.toString())
+        .filter(i => i.vendor?.toString() === req.user._id.toString())
         .reduce((si, i) => si + (i.price * i.quantity), 0);
     }, 0);
 

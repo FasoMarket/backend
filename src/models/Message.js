@@ -15,12 +15,17 @@ const messageSchema = new mongoose.Schema({
     type: String,
     required: true,
     trim: true,
-    maxlength: 2000,
+    maxlength: 5000,
   },
   type: {
     type: String,
-    enum: ['text', 'image', 'product_link'],
+    enum: ['text', 'image', 'file', 'product_link'],
     default: 'text',
+  },
+  fileInfo: {
+    originalName: String,
+    mimeType: String,
+    size: Number,
   },
   isRead: {
     type: Boolean,

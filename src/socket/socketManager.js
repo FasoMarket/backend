@@ -34,6 +34,9 @@ const initSocket = (io) => {
 
     socket.join(`user:${userId}`);
     socket.broadcast.emit('user:online', { userId });
+    
+    // Envoyer la liste des utilisateurs en ligne au nouveau connecté
+    socket.emit('users:online', { userIds: Array.from(onlineUsers.keys()) });
 
     socket.on('conversation:join', async ({ conversationId }) => {
       try {
@@ -133,6 +136,86 @@ const initSocket = (io) => {
 
     socket.on('typing:stop', ({ conversationId }) => {
       socket.to(`conv:${conversationId}`).emit('typing:stop', { userId, conversationId });
+    });
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // APPELS VOCAUX (WebRTC Signaling)
+    // ══════════════════════════════════════════════════════════════════════════
+    
+    // Initier un appel
+    socket.on('call:initiate', async ({ targetUserId, conversationId, callerName }) => {
+      console.log(`📞 Appel initié par ${socket.user.name} vers ${targetUserId}`);
+      
+      // Vérifier si l'utilisateur cible est en ligne
+      if (!onlineUsers.has(targetUserId)) {
+        socket.emit('call:error', { 
+          message: 'L\'utilisateur n\'est pas en ligne',
+          code: 'USER_OFFLINE'
+        });
+        return;
+      }
+      
+      // Envoyer l'appel entrant à l'utilisateur cible
+      io.to(`user:${targetUserId}`).emit('call:incoming', {
+        callerId: userId,
+        callerName: callerName || socket.user.name,
+        conversationId,
+        timestamp: new Date()
+      });
+    });
+    
+    // Accepter un appel
+    socket.on('call:accept', ({ callerId, conversationId }) => {
+      console.log(`✅ Appel accepté par ${socket.user.name}`);
+      io.to(`user:${callerId}`).emit('call:accepted', {
+        acceptedBy: userId,
+        acceptedByName: socket.user.name,
+        conversationId
+      });
+    });
+    
+    // Refuser un appel
+    socket.on('call:reject', ({ callerId, reason }) => {
+      console.log(`❌ Appel refusé par ${socket.user.name}`);
+      io.to(`user:${callerId}`).emit('call:rejected', {
+        rejectedBy: userId,
+        rejectedByName: socket.user.name,
+        reason: reason || 'Appel refusé'
+      });
+    });
+    
+    // Terminer un appel
+    socket.on('call:end', ({ targetUserId, conversationId }) => {
+      console.log(`📵 Appel terminé par ${socket.user.name}`);
+      io.to(`user:${targetUserId}`).emit('call:ended', {
+        endedBy: userId,
+        endedByName: socket.user.name,
+        conversationId
+      });
+    });
+    
+    // WebRTC Signaling - Offer
+    socket.on('webrtc:offer', ({ targetUserId, offer }) => {
+      io.to(`user:${targetUserId}`).emit('webrtc:offer', {
+        fromUserId: userId,
+        offer
+      });
+    });
+    
+    // WebRTC Signaling - Answer
+    socket.on('webrtc:answer', ({ targetUserId, answer }) => {
+      io.to(`user:${targetUserId}`).emit('webrtc:answer', {
+        fromUserId: userId,
+        answer
+      });
+    });
+    
+    // WebRTC Signaling - ICE Candidate
+    socket.on('webrtc:ice-candidate', ({ targetUserId, candidate }) => {
+      io.to(`user:${targetUserId}`).emit('webrtc:ice-candidate', {
+        fromUserId: userId,
+        candidate
+      });
     });
 
     socket.on('disconnect', () => {

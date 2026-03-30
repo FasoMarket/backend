@@ -6,7 +6,10 @@ const { sendSuccess, sendError } = require('../utils/sendResponse');
 // Inscription
 exports.register = async (req, res) => {
   try {
-    const { name, email, password, role, phone, shopName, address, businessCategory, description } = req.body;
+    let { name, email, password, role, phone, shopName, storeName, address, businessCategory, description } = req.body;
+    
+    // Fallback for shopName if storeName is provided
+    if (!shopName && storeName) shopName = storeName;
 
     const userExists = await User.findOne({ email });
     if (userExists) {

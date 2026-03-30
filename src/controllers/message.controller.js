@@ -192,3 +192,69 @@ exports.deleteConversation = asyncHandler(async (req, res) => {
 
   res.status(200).json({ success: true, message: "Conversation supprimée" });
 });
+
+// 7. Envoyer un fichier (image ou document)
+exports.sendFile = asyncHandler(async (req, res) => {
+  const { conversationId } = req.params;
+  const userId = req.user._id;
+
+  // Vérifier que l'utilisateur est dans la conversation
+  const conversation = await Conversation.findOne({
+    _id: conversationId,
+    participants: userId
+  });
+
+  if (!conversation) {
+    return res.status(404).json({ success: false, message: "Conversation non trouvée" });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ success: false, message: "Aucun fichier fourni" });
+  }
+
+  const file = req.file;
+  const isImage = file.mimetype.startsWith('image/');
+  
+  // Construire l'URL du fichier
+  const fileUrl = `/uploads/messages/${file.filename}`;
+
+  // Créer le message avec le fichier
+  const message = await Message.create({
+    conversation: conversationId,
+    sender: userId,
+    content: fileUrl,
+    type: isImage ? 'image' : 'file',
+    fileInfo: {
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      size: file.size
+    }
+  });
+
+  await message.populate('sender', 'name avatar');
+
+  // Mettre à jour la conversation
+  await Conversation.findByIdAndUpdate(conversationId, {
+    lastMessage: message._id,
+    lastMessageAt: new Date()
+  });
+
+  // Émettre via Socket.IO
+  const io = req.app.get('io');
+  if (io) {
+    io.to(`conv:${conversationId}`).emit('message:received', {
+      message,
+      conversationId
+    });
+
+    // Notifier les autres participants
+    const otherParticipants = conversation.participants.filter(p => p.toString() !== userId.toString());
+    for (const pid of otherParticipants) {
+      await Conversation.findByIdAndUpdate(conversationId, {
+        $inc: { [`unreadCount.${pid}`]: 1 }
+      });
+    }
+  }
+
+  res.status(201).json({ success: true, message });
+});

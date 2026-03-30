@@ -1,5 +1,6 @@
 const Product = require('../models/Product');
 const Store = require('../models/Store');
+const Category = require('../models/Category');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiFeatures = require('../utils/ApiFeatures');
 const { sendSuccess, sendError, sendPaginatedResponse, sendListResponse } = require('../utils/sendResponse');
@@ -228,6 +229,15 @@ exports.deleteProductImage = async (req, res) => {
 
 // Obtenir les catégories disponibles
 exports.getCategories = asyncHandler(async (req, res) => {
-  const categories = await Product.distinct('category');
-  sendListResponse(res, 200, categories, 'Catégories récupérées');
+  // Récupérer les catégories depuis le modèle Category (créées par l'admin)
+  const categoriesFromDb = await Category.find({ isActive: true }).select('name').sort('name');
+  const categoryNames = categoriesFromDb.map(cat => cat.name);
+  
+  // Si aucune catégorie n'existe dans la DB, fallback sur les catégories des produits existants
+  if (categoryNames.length === 0) {
+    const categoriesFromProducts = await Product.distinct('category');
+    return sendListResponse(res, 200, categoriesFromProducts, 'Catégories récupérées');
+  }
+  
+  sendListResponse(res, 200, categoryNames, 'Catégories récupérées');
 });

@@ -316,7 +316,7 @@ exports.getOrders = async (req, res) => {
     }
 
     const match = { 'items.vendor': req.user._id };
-    if (status) match.status = status;
+    if (status) match.orderStatus = status;
     if (startDate || endDate) {
       match.createdAt = {};
       if (startDate) match.createdAt.$gte = new Date(startDate);
@@ -324,7 +324,7 @@ exports.getOrders = async (req, res) => {
     }
 
     const orders = await Order.find(match)
-      .populate('customer', 'name email phone avatar')
+      .populate('user', 'name email phone avatar')
       .sort('-createdAt')
       .limit(Number(limit))
       .skip((Number(page) - 1) * Number(limit));
@@ -335,7 +335,7 @@ exports.getOrders = async (req, res) => {
       items: o.items.filter(i => i.vendor?.toString() === req.user._id.toString()),
       vendorTotal: o.items
         .filter(i => i.vendor?.toString() === req.user._id.toString())
-        .reduce((sum, i) => sum + (i.subtotal || 0), 0),
+        .reduce((sum, i) => sum + (i.price * i.quantity || 0), 0),
     }));
 
     const total = await Order.countDocuments(match);
@@ -349,11 +349,13 @@ exports.getOrders = async (req, res) => {
 exports.getOrderDetail = async (req, res) => {
   try {
     const order = await Order.findOne({ _id: req.params.id, 'items.vendor': req.user._id })
-      .populate('customer', 'name email phone avatar');
+      .populate('user', 'name email phone avatar')
+      .populate('items.product', 'name images');
     if (!order) return res.status(404).json({ success: false, message: 'Commande introuvable' });
 
     const vendorItems = order.items.filter(i => i.vendor?.toString() === req.user._id.toString());
-    res.json({ success: true, order: { ...order.toObject(), items: vendorItems } });
+    const orderData = { ...order.toObject(), items: vendorItems };
+    res.json({ success: true, data: orderData });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -366,9 +368,9 @@ exports.updateOrderStatus = async (req, res) => {
 
     const order = await Order.findOneAndUpdate(
       { _id: req.params.id, 'items.vendor': req.user._id },
-      { $set: { status } },
+      { $set: { orderStatus: status } },
       { new: true }
-    ).populate('customer', 'name _id');
+    ).populate('user', 'name _id');
 
     if (!order) return res.status(404).json({ success: false, message: 'Commande introuvable' });
 
@@ -381,15 +383,15 @@ exports.updateOrderStatus = async (req, res) => {
       cancelled:  { title: '❌ Commande annulée',    msg: 'Votre commande a été annulée' },
     };
 
-    if (messages[status]) {
-      await sendNotification(io, {
-        recipientId: order.customer._id,
+    if (messages[status] && order.user) {
+      sendNotification(io, {
+        recipientId: order.user._id,
         type:    `order_${status}`,
         title:   messages[status].title,
         message: messages[status].msg,
         link:    `/my-orders/${order._id}`,
         data:    { orderId: order._id },
-      });
+      }).catch(err => console.error('Erreur notification:', err));
     }
 
     // Mettre à jour soldCount des produits si livré
@@ -402,6 +404,7 @@ exports.updateOrderStatus = async (req, res) => {
 
     res.json({ success: true, order });
   } catch (err) {
+    console.error('❌ Erreur updateOrderStatus:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -416,6 +419,9 @@ exports.getReviews = async (req, res) => {
     if (replied === 'true')  filtre.reply = { $ne: null };
     if (replied === 'false') filtre.reply = null;
 
+    console.log('📝 getReviews - Filtre:', filtre);
+    console.log('📝 getReviews - User ID:', req.user._id);
+
     const reviews = await Review.find(filtre)
       .populate('customer', 'name avatar')
       .populate('product',  'name images')
@@ -424,8 +430,13 @@ exports.getReviews = async (req, res) => {
       .skip((Number(page) - 1) * Number(limit));
 
     const total = await Review.countDocuments(filtre);
-    res.json({ success: true, reviews, total });
+    
+    console.log('📝 getReviews - Avis trouvés:', reviews.length);
+    console.log('📝 getReviews - Total:', total);
+
+    res.json({ success: true, data: { reviews, total } });
   } catch (err) {
+    console.error('❌ Erreur getReviews:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -476,62 +487,8 @@ exports.getReviewStats = async (req, res) => {
       },
     ]);
 
-    res.json({ success: true, stats: stats[0] || { average: 0, total: 0, replied: 0 } });
+    res.json({ success: true, data: { stats: stats[0] || { average: 0, total: 0, replied: 0 } } });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-// Routes publiques avis
-exports.createReview = async (req, res) => {
-  try {
-    const { productId, orderId, rating, comment } = req.body;
-
-    // Vérifier que la commande existe et est livrée
-    const order = await Order.findOne({
-      _id: orderId,
-      customer: req.user._id,
-      status: 'delivered',
-    });
-    if (!order) return res.status(400).json({ success: false, message: 'Vous ne pouvez noter que les commandes livrées' });
-
-    const product = await Product.findById(productId);
-    if (!product) return res.status(404).json({ success: false, message: 'Produit introuvable' });
-
-    const review = await Review.create({
-      product: productId,
-      vendor:  product.vendor,
-      customer:req.user._id,
-      order:   orderId,
-      rating,
-      comment,
-    });
-
-    // Recalculer la note moyenne du produit
-    const agg = await Review.aggregate([
-      { $match: { product: product._id } },
-      { $group: { _id: null, avg: { $avg: '$rating' }, count: { $sum: 1 } } },
-    ]);
-    await Product.findByIdAndUpdate(productId, {
-      'rating.average': Math.round((agg[0]?.avg || 0) * 10) / 10,
-      'rating.count':   agg[0]?.count || 0,
-    });
-
-    // Notifier le vendeur
-    const io = req.app.get('io');
-    await sendNotification(io, {
-      recipientId: product.vendor,
-      type:    'avis',
-      title:   `⭐ Nouvel avis ${rating}/5`,
-      message: `${req.user.name} a laissé un avis sur "${product.name}"`,
-      link:    '/vendor/reviews',
-      data:    { reviewId: review._id, rating },
-    });
-
-    res.status(201).json({ success: true, review });
-  } catch (err) {
-    if (err.code === 11000)
-      return res.status(400).json({ success: false, message: 'Vous avez déjà noté ce produit pour cette commande' });
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -576,13 +533,13 @@ exports.getOverview = async (req, res) => {
       Order.countDocuments({ 'items.vendor': vendorId }),
       Order.countDocuments({ 'items.vendor': vendorId, createdAt: { $gte: startMonth } }),
       Order.aggregate([
-        { $match: { 'items.vendor': vendorId, status: 'delivered' } },
+        { $match: { 'items.vendor': vendorId, orderStatus: 'delivered' } },
         { $unwind: '$items' },
         { $match: { 'items.vendor': vendorId } },
         { $group: { _id: null, total: { $sum: '$items.subtotal' } } },
       ]),
       Order.aggregate([
-        { $match: { 'items.vendor': vendorId, status: 'delivered', createdAt: { $gte: startMonth } } },
+        { $match: { 'items.vendor': vendorId, orderStatus: 'delivered', createdAt: { $gte: startMonth } } },
         { $unwind: '$items' },
         { $match: { 'items.vendor': vendorId } },
         { $group: { _id: null, total: { $sum: '$items.subtotal' } } },
@@ -591,7 +548,7 @@ exports.getOverview = async (req, res) => {
         { $match: { vendor: vendorId } },
         { $group: { _id: null, avg: { $avg: '$rating' }, count: { $sum: 1 } } },
       ]),
-      Order.countDocuments({ 'items.vendor': vendorId, status: 'pending' }),
+      Order.countDocuments({ 'items.vendor': vendorId, orderStatus: 'pending' }),
       Product.countDocuments({ vendor: vendorId, stock: { $lt: 10 } }),
     ]);
 
@@ -617,6 +574,7 @@ exports.getOverview = async (req, res) => {
       },
     });
   } catch (err) {
+    console.error('❌ Erreur getOverview:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -629,7 +587,7 @@ exports.getRevenueChart = async (req, res) => {
     start.setDate(start.getDate() - days);
 
     const data = await Order.aggregate([
-      { $match: { 'items.vendor': req.user._id, status: 'delivered', createdAt: { $gte: start } } },
+      { $match: { 'items.vendor': req.user._id, orderStatus: 'delivered', createdAt: { $gte: start } } },
       { $unwind: '$items' },
       { $match: { 'items.vendor': req.user._id } },
       {
@@ -652,7 +610,7 @@ exports.getRevenueChart = async (req, res) => {
 exports.getTopProducts = async (req, res) => {
   try {
     const data = await Order.aggregate([
-      { $match: { 'items.vendor': req.user._id, status: 'delivered' } },
+      { $match: { 'items.vendor': req.user._id, orderStatus: 'delivered' } },
       { $unwind: '$items' },
       { $match: { 'items.vendor': req.user._id } },
       { $group: { _id: '$items.product', totalSold: { $sum: '$items.quantity' }, revenue: { $sum: '$items.subtotal' } } },
@@ -690,7 +648,7 @@ exports.getOrdersTrend = async (req, res) => {
 exports.getFinancialSummary = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
-    const match = { 'items.vendor': req.user._id, status: 'delivered' };
+    const match = { 'items.vendor': req.user._id, orderStatus: 'delivered' };
     if (startDate || endDate) {
       match.createdAt = {};
       if (startDate) match.createdAt.$gte = new Date(startDate);
@@ -729,7 +687,7 @@ exports.getPaymentHistory = async (req, res) => {
 
     const orders = await Order.find({
       'items.vendor': req.user._id,
-      status: 'delivered',
+      orderStatus: 'delivered',
     })
       .select('totalAmount createdAt customer reference_paiement')
       .populate('customer', 'name')

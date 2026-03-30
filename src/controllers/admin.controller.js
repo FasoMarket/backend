@@ -34,6 +34,22 @@ exports.approveVendor = async (req, res) => {
     vendor.isVendorApproved = true;
     await vendor.save();
 
+    // CRÉATION AUTOMATIQUE DE LA BOUTIQUE
+    const Store = require('../models/Store');
+    let store = await Store.findOne({ owner: vendor._id });
+    
+    if (!store) {
+      console.log(`📝 Création automatique de la boutique pour ${vendor.name}`);
+      store = await Store.create({
+        name: vendor.shopName || `${vendor.name}'s Shop`,
+        description: vendor.description || `Bienvenue dans la boutique de ${vendor.name}. Nous sommes ravis de vous accueillir !`,
+        phone: vendor.phone,
+        address: vendor.address || 'Non spécifiée',
+        owner: vendor._id
+      });
+      console.log(`✅ Boutique "${store.name}" créée avec succès`);
+    }
+
     // NOTIFICATION
     const io = req.app.get('io');
     await sendNotification(io, {
@@ -297,14 +313,38 @@ exports.getCategories = async (req, res) => {
 // POST /admin/categories
 exports.createCategory = async (req, res) => {
   try {
-    const { name, slug, description, icon, colorIdx } = req.body;
+    const { name, description, icon, colorIdx } = req.body;
 
-    const existing = await Category.findOne({ slug });
-    if (existing) {
-      return sendError(res, 400, 'Une catégorie avec ce slug existe déjà.');
+    if (!name || !name.trim()) {
+      return sendError(res, 400, 'Le nom de la catégorie est requis.');
     }
 
-    const category = await Category.create({ name, slug, description, icon, colorIdx });
+    // Auto-generate slug from name
+    const slug = name
+      .toLowerCase()
+      .trim()
+      .replace(/[àáâãäå]/g, 'a')
+      .replace(/[èéêë]/g, 'e')
+      .replace(/[ìíîï]/g, 'i')
+      .replace(/[òóôõö]/g, 'o')
+      .replace(/[ùúûü]/g, 'u')
+      .replace(/[ç]/g, 'c')
+      .replace(/[ñ]/g, 'n')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+    const existing = await Category.findOne({ $or: [{ slug }, { name: name.trim() }] });
+    if (existing) {
+      return sendError(res, 400, 'Une catégorie avec ce nom existe déjà.');
+    }
+
+    const category = await Category.create({ 
+      name: name.trim(), 
+      slug, 
+      description: description || '', 
+      icon: icon || '🛍️', 
+      colorIdx: colorIdx || 0 
+    });
     
     // Broadcast Socket.io event pour que tous les clients voient la nouvelle catégorie
     const io = req.app.get('io');
@@ -318,7 +358,7 @@ exports.createCategory = async (req, res) => {
     sendSuccess(res, 201, category, 'Catégorie créée avec succès');
   } catch (error) {
     if (error.code === 11000) {
-      return sendError(res, 400, 'Ce nom/slug est déjà utilisé.');
+      return sendError(res, 400, 'Ce nom est déjà utilisé.');
     }
     sendError(res, 500, error.message);
   }
@@ -327,9 +367,32 @@ exports.createCategory = async (req, res) => {
 // PUT /admin/categories/:id
 exports.updateCategory = async (req, res) => {
   try {
+    const { name, description, icon, colorIdx } = req.body;
+    
+    const updateData = {};
+    if (name) {
+      updateData.name = name.trim();
+      // Auto-generate slug from name
+      updateData.slug = name
+        .toLowerCase()
+        .trim()
+        .replace(/[àáâãäå]/g, 'a')
+        .replace(/[èéêë]/g, 'e')
+        .replace(/[ìíîï]/g, 'i')
+        .replace(/[òóôõö]/g, 'o')
+        .replace(/[ùúûü]/g, 'u')
+        .replace(/[ç]/g, 'c')
+        .replace(/[ñ]/g, 'n')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    }
+    if (description !== undefined) updateData.description = description;
+    if (icon !== undefined) updateData.icon = icon;
+    if (colorIdx !== undefined) updateData.colorIdx = colorIdx;
+
     const category = await Category.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      updateData,
       { new: true, runValidators: true }
     );
     if (!category) return sendError(res, 404, 'Catégorie non trouvée');
@@ -345,6 +408,9 @@ exports.updateCategory = async (req, res) => {
     
     sendSuccess(res, 200, category, 'Catégorie mise à jour');
   } catch (error) {
+    if (error.code === 11000) {
+      return sendError(res, 400, 'Ce nom est déjà utilisé.');
+    }
     sendError(res, 500, error.message);
   }
 };

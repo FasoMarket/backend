@@ -47,7 +47,7 @@ const orderSchema = new mongoose.Schema({
   },
   paymentMethod: {
     type: String,
-    enum: ['mobile_money', 'cash', 'orange', 'moov'],
+    enum: ['mobile_money', 'cash', 'orange', 'moov', 'orange_money', 'moov_money', 'coris_money'],
     default: 'mobile_money'
   },
   paymentStatus: {
@@ -64,7 +64,9 @@ const orderSchema = new mongoose.Schema({
   commissionRate: { type: Number, default: 0 },
   commissionAmount: { type: Number, default: 0 },
   fixedFee: { type: Number, default: 0 },
-  netAmount: { type: Number, default: 0 } // Amount after commission
+  netAmount: { type: Number, default: 0 }, // Amount after commission
+  promoCode: { type: String },
+  discountAmount: { type: Number, default: 0 }
 }, {
   timestamps: true
 });
